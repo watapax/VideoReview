@@ -82,15 +82,16 @@ contenedor.
   mostrar el dibujo guardado encima, y la anotación queda resaltada tanto
   en la lista como en la línea de tiempo.
 - **Compartir con el estudiante** (botón "Compartir" en la pantalla de
-  anotar, o "Copiar link para el estudiante" en cada video de la pestaña
-  Videos): copia un link público al portapapeles. Quien lo abra ve el video
-  y las anotaciones de ese video (solo lectura, sin poder editar ni
-  eliminar nada) sin necesitar la contraseña ni acceso al resto del panel
-  de notas y tareas.
+  anotar, o "Compartir con [estudiante]" en la pestaña Videos): copia un
+  link público al portapapeles. Es un solo link por tarea + estudiante —
+  si tiene varios videos (ej. "Intento 1", "Intento 2"), el mismo link los
+  cubre todos, con una navegación simple ("‹ Revisión 1 de 2 ›") para pasar
+  de uno a otro. Quien lo abra ve el video y sus anotaciones (solo lectura,
+  sin poder editar ni eliminar nada) sin necesitar la contraseña ni acceso
+  al resto del panel de notas y tareas.
 
 ## Qué falta (fases siguientes)
 
-- Manejo más pulido de cuando hay varios videos por tarea+estudiante.
 - Exportación a PDF "de verdad" (por ahora es imprimir la página del
   informe desde el navegador, que ya se ve bien pero no es un PDF generado
   por el backend).

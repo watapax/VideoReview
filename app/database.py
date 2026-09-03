@@ -1,5 +1,4 @@
 import os
-import secrets
 import sqlite3
 
 from sqlmodel import SQLModel, Session, create_engine
@@ -119,40 +118,10 @@ def _migrate_rubric_to_assignments() -> None:
         conn.close()
 
 
-def _migrate_add_video_share_token() -> None:
-    """Migración: agrega la columna share_token a video (tabla que ya existía
-    de la fase 1, antes de que hubiera link público) y le genera un token
-    aleatorio a cada video que todavía no tenga uno — así los videos subidos
-    antes de esta función también quedan con un link para compartir, sin que
-    el profesor tenga que volver a subirlos. Segura de correr en cada
-    arranque: si ya están todos migrados, no hace nada.
-    """
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        cur = conn.cursor()
-        if not _table_exists(cur, "video"):
-            return
-        if not _column_exists(cur, "video", "share_token"):
-            cur.execute("ALTER TABLE video ADD COLUMN share_token TEXT")
-
-        cur.execute("SELECT id FROM video WHERE share_token IS NULL OR share_token = ''")
-        pending_ids = [row[0] for row in cur.fetchall()]
-        for video_id in pending_ids:
-            cur.execute(
-                "UPDATE video SET share_token = ? WHERE id = ?",
-                (secrets.token_urlsafe(16), video_id),
-            )
-
-        conn.commit()
-    finally:
-        conn.close()
-
-
 def init_db() -> None:
     SQLModel.metadata.create_all(engine)
     _migrate_add_courses()
     _migrate_rubric_to_assignments()
-    _migrate_add_video_share_token()
 
 
 def get_session():

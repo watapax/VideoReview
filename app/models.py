@@ -76,13 +76,26 @@ class Video(SQLModel, table=True):
     original_filename: str = ""
     size_bytes: int = 0
     uploaded_at: datetime = Field(default_factory=datetime.utcnow)
-    # Token largo y aleatorio para el link público de solo lectura
-    # (/watch/{share_token}) que le permite al estudiante ver sus anotaciones
-    # sin entrar al panel de notas. No es una migración de columna nueva sin
-    # más: como Video ya existía en instalaciones previas, _migrate_add_
-    # video_share_token() en database.py le agrega esta columna y le genera
-    # un token a los videos que ya estaban subidos.
-    share_token: str = Field(default="", index=True)
+
+
+class VideoShare(SQLModel, table=True):
+    """Token del link público de solo lectura (/watch/{share_token}).
+
+    Es por TAREA + ESTUDIANTE, no por video individual — una tarea puede
+    tener más de un video (varios intentos) por estudiante, y el profesor
+    quiere un solo link que los cubra todos, con navegación simple entre
+    ellos (ver /watch/{share_token} en main.py). Se crea la primera vez que
+    el profesor pide el link (botón "Compartir"), no al subir el video —
+    así no queda un token por cada intento, sino uno solo por estudiante y
+    tarea. Es una tabla nueva: no necesita su propia función de migración,
+    basta con que init_db() la cree vía metadata.create_all().
+    """
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    assignment_id: int = Field(foreign_key="assignment.id", index=True)
+    student_id: int = Field(foreign_key="student.id", index=True)
+    share_token: str = Field(index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class Annotation(SQLModel, table=True):

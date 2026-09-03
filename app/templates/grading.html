@@ -76,7 +76,15 @@
     </div>
 
     <div class="tab-panel" data-panel="videos" style="{{ '' if active_tab == 'videos' else 'display:none;' }}">
-      <p class="videos-hint">Puedes subir varios videos para esta tarea y este estudiante — por ejemplo, distintos intentos o ángulos de la misma entrega. Solo se aceptan archivos .mp4.</p>
+      <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:14px;">
+        <p class="videos-hint" style="margin:0;">Puedes subir varios videos para esta tarea y este estudiante — por ejemplo, distintos intentos o ángulos de la misma entrega. Solo se aceptan archivos .mp4.</p>
+        {% if videos_share_url %}
+        <button type="button" class="btn secondary share-video-btn" data-share-url="{{ videos_share_url }}" style="flex-shrink:0; white-space:nowrap;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="M16 6l-4-4-4 4"/><path d="M12 2v14"/></svg>
+          <span class="share-video-btn-label">Compartir con {{ current.name }}</span>
+        </button>
+        {% endif %}
+      </div>
 
       {% if not r2_configured %}
       <div class="card" style="color:var(--muted); margin-bottom:14px;">
@@ -95,10 +103,6 @@
               {% if v.annotation_count %} · {{ v.annotation_count }} anotación{{ 'es' if v.annotation_count != 1 else '' }}{% endif %}
             </div>
             <a href="/videos/{{ v.id }}" class="btn" style="width:100%; justify-content:center; margin-bottom:8px;">Anotar</a>
-            <button type="button" class="btn secondary share-video-btn" data-share-url="{{ v.share_url }}" style="width:100%; justify-content:center; margin-bottom:8px;">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="M16 6l-4-4-4 4"/><path d="M12 2v14"/></svg>
-              <span class="share-video-btn-label">Copiar link para el estudiante</span>
-            </button>
             <form method="post" action="/videos/{{ v.id }}/delete" onsubmit="return confirm('¿Eliminar este video? No se puede deshacer.');">
               <button type="submit" class="btn secondary" style="width:100%;">Eliminar</button>
             </form>

@@ -16,7 +16,7 @@ from starlette.responses import RedirectResponse, Response
 from app import storage
 from app.auth import TEACHER_PASSWORD, require_login
 from app.database import engine, init_db
-from app.models import Annotation, Assignment, Course, Grade, RubricAspect, Student, Video
+from app.models import Annotation, Assignment, Course, Grade, RubricAspect, Student, Video, VideoShare
 from app.scoring import SCALE_MAX, SCALE_MIN, band, fmt, weight_display, weighted_average, weights_sum
 from app.seed import seed_defaults, seed_rubric_for_assignment
 
@@ -40,6 +40,24 @@ def fmt_time_mmss(seconds: float) -> str:
     total = max(0, int(round(seconds or 0)))
     m, s = divmod(total, 60)
     return f"{m}:{s:02d}"
+
+
+def get_or_create_share_token(session: Session, assignment_id: int, student_id: int) -> str:
+    """El link público (/watch/{token}) es por tarea+estudiante, no por video
+    individual — cubre todos los intentos/revisiones de ese par. Se crea la
+    primera vez que se pide (botón "Compartir"), reutilizando el mismo token
+    en cada visita siguiente en vez de generar uno nuevo cada vez."""
+    share = session.exec(
+        select(VideoShare).where(
+            VideoShare.assignment_id == assignment_id, VideoShare.student_id == student_id
+        )
+    ).first()
+    if share:
+        return share.share_token
+    share = VideoShare(assignment_id=assignment_id, student_id=student_id, share_token=secrets.token_urlsafe(16))
+    session.add(share)
+    session.commit()
+    return share.share_token
 
 APP_DIR = os.path.dirname(__file__)
 
@@ -534,6 +552,7 @@ def grading_screen(assignment_id: int, request: Request):
                 next_student = students_ctx[idx + 1]
 
         videos_ctx = []
+        videos_share_url = None
         if current:
             videos = session.exec(
                 select(Video)
@@ -549,34 +568,44 @@ def grading_screen(assignment_id: int, request: Request):
                         "size_display": fmt_size(v.size_bytes),
                         "uploaded_display": fmt_date_es(v.uploaded_at),
                         "annotation_count": ann_count,
-                        "share_url": str(request.base_url).rstrip("/") + f"/watch/{v.share_token}",
                     }
                 )
+            # Un solo link por tarea+estudiante (no por video: puede haber más
+            # de una revisión/intento) — el estudiante navega entre ellas
+            # dentro de la página pública.
+            if videos:
+                token = get_or_create_share_token(session, assignment_id, current["id"])
+                videos_share_url = str(request.base_url).rstrip("/") + f"/watch/{token}"
 
-    active_tab = "videos" if request.query_params.get("tab") == "videos" else "rubrica"
+        # get_or_create_share_token puede hacer session.commit() (si crea el
+        # token por primera vez), lo que expira los atributos ya cargados de
+        # assignment/course/courses en esta sesión — por eso el render de la
+        # plantilla (que los lee) tiene que quedar DENTRO de este `with`.
+        active_tab = "videos" if request.query_params.get("tab") == "videos" else "rubrica"
 
-    return templates.TemplateResponse(
-        "grading.html",
-        {
-            "request": request,
-            "assignment": assignment,
-            "students": students_ctx,
-            "current": current,
-            "aspects": aspects_ctx,
-            "grades": current_grades,
-            "graded_count": graded_count,
-            "next_student": next_student,
-            "scale_min": SCALE_MIN,
-            "scale_max": SCALE_MAX,
-            "scale_min_display": str(int(SCALE_MIN)),
-            "scale_max_display": str(int(SCALE_MAX)),
-            "course": course,
-            "courses": courses,
-            "videos": videos_ctx,
-            "active_tab": active_tab,
-            "r2_configured": storage.is_configured(),
-        },
-    )
+        return templates.TemplateResponse(
+            "grading.html",
+            {
+                "request": request,
+                "assignment": assignment,
+                "students": students_ctx,
+                "current": current,
+                "aspects": aspects_ctx,
+                "grades": current_grades,
+                "graded_count": graded_count,
+                "next_student": next_student,
+                "scale_min": SCALE_MIN,
+                "scale_max": SCALE_MAX,
+                "scale_min_display": str(int(SCALE_MIN)),
+                "scale_max_display": str(int(SCALE_MAX)),
+                "course": course,
+                "courses": courses,
+                "videos": videos_ctx,
+                "videos_share_url": videos_share_url,
+                "active_tab": active_tab,
+                "r2_configured": storage.is_configured(),
+            },
+        )
 
 
 @app.post("/assignments/{assignment_id}/grade")
@@ -797,7 +826,6 @@ async def video_upload(assignment_id: int, request: Request):
             object_key=key,
             original_filename=upload.filename,
             size_bytes=size_bytes,
-            share_token=secrets.token_urlsafe(16),
         )
         session.add(video)
         session.commit()
@@ -919,22 +947,32 @@ def video_review(video_id: int, request: Request):
         except ValueError:
             highlight_id = None
 
-    return templates.TemplateResponse(
-        "video_review.html",
-        {
-            "request": request,
-            "video": video,
-            "assignment": assignment,
-            "student": student,
-            "annotations": annotations_ctx,
-            "annotations_json": annotations_json,
-            "highlight_id": highlight_id,
-            "colors": ANNOTATION_COLORS,
-            "course": course,
-            "courses": courses,
-            "share_url": str(request.base_url).rstrip("/") + f"/watch/{video.share_token}",
-        },
-    )
+        # Mismo link para todos los videos de este estudiante en esta tarea
+        # (no uno por video — ver get_or_create_share_token). Ojo: esta
+        # función puede hacer session.commit() (si crea el token por primera
+        # vez), lo que por defecto expira los atributos ya cargados de video/
+        # assignment/student en esta sesión — por eso el render de la
+        # plantilla (que los lee) tiene que quedar DENTRO de este `with`,
+        # nunca después de que la sesión se cierre.
+        token = get_or_create_share_token(session, video.assignment_id, video.student_id)
+        share_url = str(request.base_url).rstrip("/") + f"/watch/{token}"
+
+        return templates.TemplateResponse(
+            "video_review.html",
+            {
+                "request": request,
+                "video": video,
+                "assignment": assignment,
+                "student": student,
+                "annotations": annotations_ctx,
+                "annotations_json": annotations_json,
+                "highlight_id": highlight_id,
+                "colors": ANNOTATION_COLORS,
+                "course": course,
+                "courses": courses,
+                "share_url": share_url,
+            },
+        )
 
 
 @app.post("/videos/{video_id}/annotations")
@@ -1062,25 +1100,62 @@ def annotation_delete(annotation_id: int, request: Request):
 
 # ------------------------------------------------------- link público -----
 # El profesor comparte /watch/{share_token} con un estudiante para que vea
-# sus anotaciones de un video sin entrar al panel de notas y tareas (no pide
-# contraseña — el token largo y aleatorio es lo que lo protege de que
-# cualquiera lo adivine). Es una versión de solo lectura de video_review: el
+# sus anotaciones sin entrar al panel de notas y tareas (no pide contraseña
+# — el token largo y aleatorio es lo que lo protege de que cualquiera lo
+# adivine). El token es por TAREA + ESTUDIANTE (get_or_create_share_token),
+# no por video individual, porque puede haber más de un video (intento) por
+# estudiante en una misma tarea — el link cubre todos, con navegación
+# anterior/siguiente entre ellos (?v={video_id}, validado contra ese mismo
+# par tarea+estudiante). Es una versión de solo lectura de video_review: el
 # mismo reproductor con línea de tiempo, marcadores y clic-para-saltar, pero
 # sin la barra de dibujo, el botón de nueva anotación, ni los de editar o
 # eliminar.
 
 
+def _public_share_and_videos(session: Session, share_token: str):
+    """Resuelve el token a su tarea+estudiante y la lista (ordenada) de sus
+    videos. Devuelve (share, assignment, student, videos) o None si el token
+    no existe o ya no queda nada que mostrar."""
+    share = session.exec(select(VideoShare).where(VideoShare.share_token == share_token)).first()
+    if not share:
+        return None
+    assignment = session.get(Assignment, share.assignment_id)
+    student = session.get(Student, share.student_id)
+    if not assignment or not student:
+        return None
+    videos = session.exec(
+        select(Video)
+        .where(Video.assignment_id == share.assignment_id, Video.student_id == share.student_id)
+        .order_by(Video.uploaded_at)
+    ).all()
+    if not videos:
+        return None
+    return share, assignment, student, videos
+
+
 @app.get("/watch/{share_token}")
 def public_review(share_token: str, request: Request):
     with Session(engine) as session:
-        video = session.exec(select(Video).where(Video.share_token == share_token)).first()
-        if not video:
+        resolved = _public_share_and_videos(session, share_token)
+        if not resolved:
             return templates.TemplateResponse("public_not_found.html", {"request": request}, status_code=404)
+        share, assignment, student, videos = resolved
 
-        assignment = session.get(Assignment, video.assignment_id)
-        student = session.get(Student, video.student_id)
-        if not assignment or not student:
-            return templates.TemplateResponse("public_not_found.html", {"request": request}, status_code=404)
+        requested_id = request.query_params.get("v")
+        video = None
+        if requested_id:
+            try:
+                requested_id = int(requested_id)
+            except ValueError:
+                requested_id = None
+            if requested_id is not None:
+                video = next((v for v in videos if v.id == requested_id), None)
+        if video is None:
+            video = videos[0]
+
+        idx = videos.index(video)
+        prev_video = videos[idx - 1] if idx > 0 else None
+        next_video = videos[idx + 1] if idx + 1 < len(videos) else None
 
         annotations = session.exec(
             select(Annotation).where(Annotation.video_id == video.id).order_by(Annotation.time_seconds)
@@ -1116,17 +1191,32 @@ def public_review(share_token: str, request: Request):
             "annotations": annotations_ctx,
             "annotations_json": annotations_json,
             "share_token": share_token,
+            "video_index": idx + 1,
+            "video_count": len(videos),
+            "prev_video_id": prev_video.id if prev_video else None,
+            "next_video_id": next_video.id if next_video else None,
         },
     )
 
 
 @app.get("/watch/{share_token}/stream")
-def public_stream(share_token: str):
+def public_stream(share_token: str, request: Request):
     with Session(engine) as session:
-        video = session.exec(select(Video).where(Video.share_token == share_token)).first()
+        resolved = _public_share_and_videos(session, share_token)
+        if not resolved:
+            return Response(status_code=404)
+        _, _, _, videos = resolved
 
-    if not video:
-        return Response(status_code=404)
+        requested_id = request.query_params.get("v")
+        video = None
+        if requested_id:
+            try:
+                video = next((v for v in videos if v.id == int(requested_id)), None)
+            except ValueError:
+                video = None
+        if video is None:
+            video = videos[0]
+
     if not storage.is_configured():
         return Response(status_code=503)
 

@@ -312,27 +312,64 @@
 
   // Única línea de tiempo (no la barra nativa del navegador — el <video> no
   // tiene el atributo `controls`, este reproductor es 100% propio) con
-  // arrastre fluido: pointerdown+pointermove+pointerup en vez de un solo
-  // 'click', para que currentTime se actualice en cada frame del arrastre y
-  // no solo al soltar el mouse.
+  // arrastre por Pointer Events. El video se sirve con Range requests contra
+  // R2 (vía redirect) — cada "salto" real requiere ida y vuelta de red para
+  // traer y decodificar el nuevo fragmento, así que llamar video.currentTime
+  // en CADA pointermove (puede disparar decenas por segundo) satura eso: el
+  // navegador cancela cada seek con el siguiente antes de que termine
+  // ninguno, y el video se ve "pegado" en el mismo cuadro. La solución es
+  // separar dos cosas: la posición VISUAL (línea/círculo/contador), que se
+  // actualiza en cada pointermove sin costo de red, del seek REAL del video,
+  // que se limita a como mucho uno cada SEEK_THROTTLE_MS — así cada seek
+  // real tiene tiempo de completarse y el video sí avanza cuadro a cuadro
+  // mientras se arrastra, en vez de quedar estático. Al soltar, se hace un
+  // último seek exacto (sin límite) para aterrizar justo donde se soltó.
+  const SEEK_THROTTLE_MS = 150;
   let scrubbing = false;
-  function seekFromPointer(e) {
-    if (!video.duration || !isFinite(video.duration)) return;
+  let wasPlayingBeforeScrub = false;
+  let lastSeekAt = 0;
+
+  function updateTimelineVisual(pct) {
+    const pctDisplay = Math.min(100, Math.max(0, pct * 100));
+    timelineFill.style.width = pctDisplay + '%';
+    timelinePlayhead.style.left = pctDisplay + '%';
+    if (video.duration && isFinite(video.duration)) {
+      playerTime.textContent = fmtClock(pct * video.duration) + ' / ' + fmtClock(video.duration);
+    }
+  }
+
+  function pctFromPointer(e) {
     const rect = timeline.getBoundingClientRect();
-    const pct = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+    return Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+  }
+
+  function scrubTo(pct, force) {
+    updateTimelineVisual(pct);
+    if (!video.duration || !isFinite(video.duration)) return;
+    const now = performance.now();
+    if (!force && now - lastSeekAt < SEEK_THROTTLE_MS) return;
+    lastSeekAt = now;
     video.currentTime = pct * video.duration;
   }
+
   timeline.addEventListener('pointerdown', e => {
     if (e.target.classList.contains('annotation-timeline-marker')) return;
     scrubbing = true;
+    wasPlayingBeforeScrub = !video.paused;
+    if (wasPlayingBeforeScrub) video.pause();
     timeline.setPointerCapture(e.pointerId);
-    seekFromPointer(e);
+    scrubTo(pctFromPointer(e), true);
   });
   timeline.addEventListener('pointermove', e => {
     if (!scrubbing) return;
-    seekFromPointer(e);
+    scrubTo(pctFromPointer(e), false);
   });
-  function endScrub() { scrubbing = false; }
+  function endScrub(e) {
+    if (!scrubbing) return;
+    scrubbing = false;
+    if (e) scrubTo(pctFromPointer(e), true);
+    if (wasPlayingBeforeScrub) { wasPlayingBeforeScrub = false; video.play(); }
+  }
   timeline.addEventListener('pointerup', endScrub);
   timeline.addEventListener('pointercancel', endScrub);
 

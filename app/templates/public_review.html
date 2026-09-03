@@ -23,13 +23,32 @@
       <div class="review-topbar">
         <span class="review-topbar-crumb"><strong style="color:var(--text);">{{ student.name }}</strong> · {{ assignment.name }}</span>
         <span class="pill review-label-pill">{{ video.label }}</span>
+        {% if video_count > 1 %}
+        <div class="public-video-nav">
+          {% if prev_video_id %}
+          <a href="/watch/{{ share_token }}?v={{ prev_video_id }}" class="icon-btn" title="Revisión anterior">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+          </a>
+          {% else %}
+          <span class="icon-btn disabled"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></span>
+          {% endif %}
+          <span class="public-video-nav-count">Revisión {{ video_index }} de {{ video_count }}</span>
+          {% if next_video_id %}
+          <a href="/watch/{{ share_token }}?v={{ next_video_id }}" class="icon-btn" title="Revisión siguiente">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+          </a>
+          {% else %}
+          <span class="icon-btn disabled"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></span>
+          {% endif %}
+        </div>
+        {% endif %}
       </div>
 
       <div class="review-layout">
         <div class="review-main">
           <div class="review-player" id="review-player">
             <div class="review-video-wrap" id="video-wrap">
-              <video id="review-video" preload="metadata" src="/watch/{{ share_token }}/stream"></video>
+              <video id="review-video" preload="metadata" src="/watch/{{ share_token }}/stream?v={{ video.id }}"></video>
               <canvas id="draw-canvas"></canvas>
             </div>
 
@@ -211,21 +230,57 @@
     playerTime.textContent = fmtClock(video.currentTime) + ' / ' + fmtClock(video.duration);
   }
 
+  // Ver el comentario largo en video_review.html: el seek real via Range
+  // requests contra R2 necesita red, así que se limita a lo más uno cada
+  // SEEK_THROTTLE_MS mientras se arrastra (la posición visual sí sigue el
+  // puntero en cada evento) — si no, el video se ve "pegado" en el mismo
+  // cuadro en vez de avanzar mientras se arrastra.
+  const SEEK_THROTTLE_MS = 150;
   let scrubbing = false;
-  function seekFromPointer(e) {
-    if (!video.duration || !isFinite(video.duration)) return;
+  let wasPlayingBeforeScrub = false;
+  let lastSeekAt = 0;
+
+  function updateTimelineVisual(pct) {
+    const pctDisplay = Math.min(100, Math.max(0, pct * 100));
+    timelineFill.style.width = pctDisplay + '%';
+    timelinePlayhead.style.left = pctDisplay + '%';
+    if (video.duration && isFinite(video.duration)) {
+      playerTime.textContent = fmtClock(pct * video.duration) + ' / ' + fmtClock(video.duration);
+    }
+  }
+
+  function pctFromPointer(e) {
     const rect = timeline.getBoundingClientRect();
-    const pct = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+    return Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+  }
+
+  function scrubTo(pct, force) {
+    updateTimelineVisual(pct);
+    if (!video.duration || !isFinite(video.duration)) return;
+    const now = performance.now();
+    if (!force && now - lastSeekAt < SEEK_THROTTLE_MS) return;
+    lastSeekAt = now;
     video.currentTime = pct * video.duration;
   }
+
   timeline.addEventListener('pointerdown', e => {
     if (e.target.classList.contains('annotation-timeline-marker')) return;
     scrubbing = true;
+    wasPlayingBeforeScrub = !video.paused;
+    if (wasPlayingBeforeScrub) video.pause();
     timeline.setPointerCapture(e.pointerId);
-    seekFromPointer(e);
+    scrubTo(pctFromPointer(e), true);
   });
-  timeline.addEventListener('pointermove', e => { if (scrubbing) seekFromPointer(e); });
-  function endScrub() { scrubbing = false; }
+  timeline.addEventListener('pointermove', e => {
+    if (!scrubbing) return;
+    scrubTo(pctFromPointer(e), false);
+  });
+  function endScrub(e) {
+    if (!scrubbing) return;
+    scrubbing = false;
+    if (e) scrubTo(pctFromPointer(e), true);
+    if (wasPlayingBeforeScrub) { wasPlayingBeforeScrub = false; video.play(); }
+  }
   timeline.addEventListener('pointerup', endScrub);
   timeline.addEventListener('pointercancel', endScrub);
 

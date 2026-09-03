@@ -125,13 +125,14 @@ termina mostrando el dibujo (no un canvas en blanco).
   silencio, pantalla completa) con una sola línea de tiempo que se arrastra
   con eventos de puntero (no un solo clic), así el tiempo se actualiza en
   cada instante del arrastre.
-- **Link público para el estudiante**: cada video tiene un token largo y
-  aleatorio (`share_token`); `/watch/{token}` es una versión de solo
-  lectura de la pantalla de anotar (mismo reproductor, sin editar/crear/
-  eliminar) que no pide contraseña — así el estudiante ve sus correcciones
-  sin entrar al panel de notas y tareas. El botón "Compartir" (en la
-  pantalla de anotar) y "Copiar link para el estudiante" (en cada tarjeta
-  de video) lo copian al portapapeles.
+- **Link público para el estudiante**: un token largo y aleatorio por
+  **tarea + estudiante** (no por video individual); `/watch/{token}` es una
+  versión de solo lectura de la pantalla de anotar (mismo reproductor, sin
+  editar/crear/eliminar) que no pide contraseña — así el estudiante ve sus
+  correcciones sin entrar al panel de notas y tareas. El botón "Compartir"
+  (en la pantalla de anotar) y "Compartir con [estudiante]" (en la pestaña
+  Videos) lo copian al portapapeles; es el mismo link sin importar desde
+  qué video de ese estudiante lo copies.
 
 Probado con Playwright: una sola línea de tiempo (sin controles nativos
 dobles), el arrastre actualiza el tiempo del video en cada paso (no solo al
@@ -140,7 +141,36 @@ compartir copia el link correcto, y la página pública funciona (salto +
 trazo, sin ningún control de edición) desde un navegador sin sesión
 iniciada.
 
+**Fase 4 (Pulido) — completa.** Se agregó lo que quedaba pendiente:
+
+- **Un solo link por varios videos**: si un estudiante tiene más de un
+  video en la misma tarea (ej. "Intento 1", "Intento 2"), el botón
+  "Compartir" genera **un único link** que los cubre todos — ya no uno por
+  video. La página pública muestra una navegación simple arriba
+  ("‹ Revisión 1 de 2 ›") para pasar al video anterior/siguiente del mismo
+  estudiante, cada uno con sus propias anotaciones.
+- **Arrastre de la línea de tiempo corregido**: el video se guarda en
+  Cloudflare R2 y se reproduce pidiendo el archivo por tramos (HTTP Range)
+  directo al navegador — cada salto (seek) implica un viaje de red. Antes,
+  el arrastre pedía un salto en cada micro-movimiento del mouse, y esos
+  pedidos se pisaban entre sí sin que ninguno llegara a completarse: el
+  video se quedaba pegado en el mismo cuadro (a veces saltando de a un
+  cuadro) en vez de mostrar el avance en tiempo real. Ahora el círculo y la
+  marca de tiempo se mueven de inmediato con el mouse, pero el salto real
+  del video se hace como máximo cada 150 milisegundos durante el arrastre
+  (y uno final preciso al soltar) — así el video sí avanza visiblemente
+  cuadro a cuadro mientras arrastras, incluso con la latencia real de la
+  red. Se probó simulando esa latencia (120ms por pedido) con Playwright, y
+  se confirmó que el tiempo del video avanza de forma continua durante un
+  arrastre lento y aterriza exacto donde se suelta.
+
+Probado con Playwright: el link es idéntico visto desde cualquiera de los
+videos del mismo estudiante/tarea, la página pública arranca en el primer
+video con el contador de navegación correcto, "siguiente"/"anterior" carga
+el video y las anotaciones correctas de cada uno, y el arrastre de la línea
+de tiempo avanza en tiempo real bajo latencia de red simulada.
+
 ## Qué falta
 
-Manejo más pulido de cuando hay varios videos por tarea+estudiante (por
-ahora cada uno se anota por separado, sin una vista que los compare).
+Nada pendiente de esta función por ahora — las cuatro fases están
+completas y probadas.
