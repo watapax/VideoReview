@@ -8,7 +8,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
 
 ENV DATA_DIR=/app/data
-VOLUME ["/app/data"]
+
 
 EXPOSE 8000
 # Forma "shell" (sin corchetes) a propósito: así se expande la variable de entorno
