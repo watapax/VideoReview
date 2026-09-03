@@ -70,6 +70,29 @@ tiempo normales del navegador. Detalles de esta fase:
   "Intento 1") y eliminar los que ya no sirvan.
 - Todavía **no** hay dibujo ni anotaciones — eso es la fase 2.
 
-**Siguiente paso: Fase 2 (Dibujo y anotaciones).** Overlay de dibujo libre
-sobre el video, selector de color y grosor, y guardar una anotación
-(dibujo + nota de texto) en un momento específico del video, en segundos.
+**Fase 2 (Dibujo y anotaciones) — lista.** Desde cada video (botón
+**Anotar** en la pestaña Videos) se abre la pantalla de revisión:
+
+- Pausa el video donde quieras comentar y toca **+ Nueva anotación**.
+- Dibuja libremente sobre el video (mouse, trackpad o lápiz/touch en
+  tablet) con 5 colores y 3 grosores de trazo, con deshacer y borrar todo.
+- Escribe una nota de texto para ese momento (puedes dejar solo dibujo,
+  solo nota, o ambos).
+- Guarda — la anotación queda ligada al segundo exacto del video.
+- La lista de anotaciones a la derecha muestra todas las guardadas
+  (ordenadas por tiempo) con su color, tiempo y nota, y puedes eliminarlas.
+
+Probado con Playwright controlando un navegador real: el canvas de dibujo
+queda perfectamente alineado con la imagen del video (sin importar la
+proporción del clip), los trazos se guardan y se recuperan bien, y los
+estados "explorando" / "dibujando" no se pisan entre sí.
+
+Todavía **no** hay clic-en-la-lista-para-saltar al momento con el dibujo
+mostrado encima, ni marcadores de color en la línea de tiempo del video —
+eso es la fase 3.
+
+**Siguiente paso: Fase 3 (Listado y navegación).** Clic en una anotación de
+la lista salta el video a ese momento, muestra el dibujo guardado encima
+(en vez del canvas en blanco) y resalta esa anotación en la lista;
+marcadores de color en la línea de tiempo del video para ver de un vistazo
+dónde hay comentarios.

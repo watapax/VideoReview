@@ -76,3 +76,26 @@ class Video(SQLModel, table=True):
     original_filename: str = ""
     size_bytes: int = 0
     uploaded_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class Annotation(SQLModel, table=True):
+    """Una anotación dibujada a mano sobre UN video, en un momento específico
+    (en segundos, no en número de frame — ver plan-revision-video.md).
+
+    `drawing_data` guarda el dibujo como datos vectoriales (JSON: una lista
+    de trazos, cada uno una lista de puntos [x, y] normalizados entre 0 y 1
+    respecto al tamaño del video) en vez de una imagen — así se ve nítido
+    sin importar el tamaño de pantalla donde se reproduzca.
+
+    Igual que Video, es una tabla nueva: no necesita su propia función de
+    migración, basta con que init_db() la cree vía metadata.create_all().
+    """
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    video_id: int = Field(foreign_key="video.id", index=True)
+    time_seconds: float = 0.0
+    color: str = "#5b7cfa"
+    stroke_width: float = 4.0
+    drawing_data: str = "{}"
+    note: str = ""
+    created_at: datetime = Field(default_factory=datetime.utcnow)

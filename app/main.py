@@ -14,7 +14,7 @@ from starlette.responses import RedirectResponse, Response
 from app import storage
 from app.auth import TEACHER_PASSWORD, require_login
 from app.database import engine, init_db
-from app.models import Assignment, Course, Grade, RubricAspect, Student, Video
+from app.models import Annotation, Assignment, Course, Grade, RubricAspect, Student, Video
 from app.scoring import SCALE_MAX, SCALE_MIN, band, fmt, weight_display, weighted_average, weights_sum
 from app.seed import seed_defaults, seed_rubric_for_assignment
 
@@ -32,6 +32,12 @@ def fmt_size(num_bytes: int) -> str:
         return ""
     mb = num_bytes / 1_048_576
     return f"{mb:.0f} MB" if mb >= 1 else f"{num_bytes / 1024:.0f} KB"
+
+
+def fmt_time_mmss(seconds: float) -> str:
+    total = max(0, int(round(seconds or 0)))
+    m, s = divmod(total, 60)
+    return f"{m}:{s:02d}"
 
 APP_DIR = os.path.dirname(__file__)
 
@@ -532,15 +538,17 @@ def grading_screen(assignment_id: int, request: Request):
                 .where(Video.assignment_id == assignment_id, Video.student_id == current["id"])
                 .order_by(Video.uploaded_at)
             ).all()
-            videos_ctx = [
-                {
-                    "id": v.id,
-                    "label": v.label or v.original_filename or "Video",
-                    "size_display": fmt_size(v.size_bytes),
-                    "uploaded_display": fmt_date_es(v.uploaded_at),
-                }
-                for v in videos
-            ]
+            for v in videos:
+                ann_count = len(session.exec(select(Annotation).where(Annotation.video_id == v.id)).all())
+                videos_ctx.append(
+                    {
+                        "id": v.id,
+                        "label": v.label or v.original_filename or "Video",
+                        "size_display": fmt_size(v.size_bytes),
+                        "uploaded_display": fmt_date_es(v.uploaded_at),
+                        "annotation_count": ann_count,
+                    }
+                )
 
     active_tab = "videos" if request.query_params.get("tab") == "videos" else "rubrica"
 
@@ -832,3 +840,130 @@ def video_delete(video_id: int, request: Request):
         url=f"/assignments/{assignment_id}?student_id={student_id}&tab=videos&msg=Video eliminado.",
         status_code=303,
     )
+
+
+# ----------------------------------------------------------- anotaciones ----
+# Fase 2: dibujo libre sobre el video (color + grosor) y una nota de texto,
+# guardados en un momento específico (en segundos). Todavía sin línea de
+# tiempo con marcadores ni clic-para-saltar en la lista — eso es la fase 3.
+
+# Orden fijo (no un set) porque también define el orden de los swatches en la
+# barra de dibujo — el primero queda seleccionado por defecto.
+ANNOTATION_COLORS = ["#5b7cfa", "#4fd6a0", "#e8b95a", "#ef7d7d", "#eef0f4"]
+ALLOWED_ANNOTATION_COLORS = set(ANNOTATION_COLORS)
+MAX_DRAWING_DATA_BYTES = 300_000  # generoso para trazos a mano; evita abusos
+
+
+@app.get("/videos/{video_id}")
+def video_review(video_id: int, request: Request):
+    redirect = require_login(request)
+    if redirect:
+        return redirect
+
+    with Session(engine) as session:
+        video = session.get(Video, video_id)
+        if not video:
+            return RedirectResponse(url="/?msg=Ese video no existe.", status_code=303)
+
+        assignment = session.get(Assignment, video.assignment_id)
+        student = session.get(Student, video.student_id)
+        if not assignment or not student:
+            return RedirectResponse(url="/?msg=Ese video no existe.", status_code=303)
+
+        set_current_course(request, assignment.course_id)
+        course, courses = current_course(session, request)
+
+        annotations = session.exec(
+            select(Annotation).where(Annotation.video_id == video_id).order_by(Annotation.time_seconds)
+        ).all()
+        annotations_ctx = [
+            {
+                "id": a.id,
+                "time_display": fmt_time_mmss(a.time_seconds),
+                "color": a.color if a.color in ALLOWED_ANNOTATION_COLORS else "#5b7cfa",
+                "note": a.note,
+            }
+            for a in annotations
+        ]
+
+    return templates.TemplateResponse(
+        "video_review.html",
+        {
+            "request": request,
+            "video": video,
+            "assignment": assignment,
+            "student": student,
+            "annotations": annotations_ctx,
+            "colors": ANNOTATION_COLORS,
+            "course": course,
+            "courses": courses,
+        },
+    )
+
+
+@app.post("/videos/{video_id}/annotations")
+async def annotation_create(video_id: int, request: Request):
+    redirect = require_login(request)
+    if redirect:
+        return redirect
+
+    with Session(engine) as session:
+        video = session.get(Video, video_id)
+        if not video:
+            return RedirectResponse(url="/?msg=Ese video no existe.", status_code=303)
+
+        form = await request.form()
+
+        try:
+            time_seconds = max(0.0, float(form.get("time_seconds") or 0))
+        except ValueError:
+            time_seconds = 0.0
+
+        try:
+            stroke_width = min(20.0, max(1.0, float(form.get("stroke_width") or 4)))
+        except ValueError:
+            stroke_width = 4.0
+
+        color = (form.get("color") or "#5b7cfa").strip()
+        if color not in ALLOWED_ANNOTATION_COLORS:
+            color = "#5b7cfa"
+
+        drawing_data = form.get("drawing_data") or "{}"
+        if len(drawing_data) > MAX_DRAWING_DATA_BYTES:
+            return RedirectResponse(
+                url=f"/videos/{video_id}?msg=El dibujo quedó demasiado grande — prueba con menos trazos.",
+                status_code=303,
+            )
+
+        note = (form.get("note") or "").strip()
+
+        session.add(
+            Annotation(
+                video_id=video_id,
+                time_seconds=time_seconds,
+                color=color,
+                stroke_width=stroke_width,
+                drawing_data=drawing_data,
+                note=note,
+            )
+        )
+        session.commit()
+
+    return RedirectResponse(url=f"/videos/{video_id}?msg=Anotación guardada.", status_code=303)
+
+
+@app.post("/annotations/{annotation_id}/delete")
+def annotation_delete(annotation_id: int, request: Request):
+    redirect = require_login(request)
+    if redirect:
+        return redirect
+
+    with Session(engine) as session:
+        ann = session.get(Annotation, annotation_id)
+        if not ann:
+            return RedirectResponse(url="/", status_code=303)
+        video_id = ann.video_id
+        session.delete(ann)
+        session.commit()
+
+    return RedirectResponse(url=f"/videos/{video_id}?msg=Anotación eliminada.", status_code=303)

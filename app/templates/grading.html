@@ -90,7 +90,11 @@
           <video controls preload="none" src="/videos/{{ v.id }}/stream"></video>
           <div class="video-card-body">
             <div class="video-card-title">{{ v.label }}</div>
-            <div class="video-card-meta">{{ v.size_display }}{% if v.size_display %} · {% endif %}subido {{ v.uploaded_display }}</div>
+            <div class="video-card-meta">
+              {{ v.size_display }}{% if v.size_display %} · {% endif %}subido {{ v.uploaded_display }}
+              {% if v.annotation_count %} · {{ v.annotation_count }} anotación{{ 'es' if v.annotation_count != 1 else '' }}{% endif %}
+            </div>
+            <a href="/videos/{{ v.id }}" class="btn" style="width:100%; justify-content:center; margin-bottom:8px;">Anotar</a>
             <form method="post" action="/videos/{{ v.id }}/delete" onsubmit="return confirm('¿Eliminar este video? No se puede deshacer.');">
               <button type="submit" class="btn secondary" style="width:100%;">Eliminar</button>
             </form>

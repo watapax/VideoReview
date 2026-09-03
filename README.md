@@ -69,14 +69,18 @@ contenedor.
   `R2_*` configuradas (ver `.env.example`); sin ellas la pestaña se ve pero
   avisa que no puede recibir subidas todavía. Solo se aceptan `.mp4` (se
   valida la extensión y el contenido del archivo).
+- **Anotar video** (botón "Anotar" en cada video): pausa el video donde
+  quieras comentar, dibuja libremente encima (color y grosor a elección) y
+  escribe una nota — queda guardado en ese segundo exacto del video. La
+  lista de anotaciones de la derecha las muestra todas y permite
+  eliminarlas.
 
 ## Qué falta (fases siguientes)
 
-- Dibujar libremente sobre el video en un momento específico (líneas de
-  acción, poses) con color y grosor, escribir una nota por anotación, y
-  navegar el video haciendo clic en una anotación de la lista — es la fase
-  2 de la revisión de video, todavía no empezada (ver
-  `plan-revision-video.md`).
+- Hacer clic en una anotación de la lista para saltar el video a ese
+  momento con el dibujo mostrado encima y la anotación resaltada, y
+  marcadores de color en la línea de tiempo del video — es la fase 3 de la
+  revisión de video, todavía no empezada (ver `plan-revision-video.md`).
 - Exportación a PDF "de verdad" (por ahora es imprimir la página del
   informe desde el navegador, que ya se ve bien pero no es un PDF generado
   por el backend).
