@@ -76,6 +76,13 @@ class Video(SQLModel, table=True):
     original_filename: str = ""
     size_bytes: int = 0
     uploaded_at: datetime = Field(default_factory=datetime.utcnow)
+    # Token largo y aleatorio para el link público de solo lectura
+    # (/watch/{share_token}) que le permite al estudiante ver sus anotaciones
+    # sin entrar al panel de notas. No es una migración de columna nueva sin
+    # más: como Video ya existía en instalaciones previas, _migrate_add_
+    # video_share_token() en database.py le agrega esta columna y le genera
+    # un token a los videos que ya estaban subidos.
+    share_token: str = Field(default="", index=True)
 
 
 class Annotation(SQLModel, table=True):

@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import secrets
 import uuid
 from datetime import datetime
 
@@ -548,6 +549,7 @@ def grading_screen(assignment_id: int, request: Request):
                         "size_display": fmt_size(v.size_bytes),
                         "uploaded_display": fmt_date_es(v.uploaded_at),
                         "annotation_count": ann_count,
+                        "share_url": str(request.base_url).rstrip("/") + f"/watch/{v.share_token}",
                     }
                 )
 
@@ -795,6 +797,7 @@ async def video_upload(assignment_id: int, request: Request):
             object_key=key,
             original_filename=upload.filename,
             size_bytes=size_bytes,
+            share_token=secrets.token_urlsafe(16),
         )
         session.add(video)
         session.commit()
@@ -893,13 +896,19 @@ def video_review(video_id: int, request: Request):
         # drawing_data ya es JSON en sí mismo (habría que escapar comillas dos
         # veces). El reemplazo de "</" evita que un note con ese texto cierre
         # el <script> antes de tiempo.
+        # note y stroke_width se incluyen (además de lo que ya se usaba para
+        # mostrar el trazo guardado) porque el modo "editar" de una anotación
+        # los precarga en el formulario sin tener que pedirlos de nuevo al
+        # servidor.
         annotations_json = json.dumps(
             [
                 {
                     "id": a.id,
                     "time_seconds": a.time_seconds,
                     "color": a.color if a.color in ALLOWED_ANNOTATION_COLORS else "#5b7cfa",
+                    "stroke_width": a.stroke_width,
                     "drawing_data": a.drawing_data,
+                    "note": a.note,
                 }
                 for a in annotations
             ]
@@ -923,6 +932,7 @@ def video_review(video_id: int, request: Request):
             "colors": ANNOTATION_COLORS,
             "course": course,
             "courses": courses,
+            "share_url": str(request.base_url).rstrip("/") + f"/watch/{video.share_token}",
         },
     )
 
@@ -985,6 +995,54 @@ async def annotation_create(video_id: int, request: Request):
     )
 
 
+@app.post("/annotations/{annotation_id}/edit")
+async def annotation_edit(annotation_id: int, request: Request):
+    """Edita una anotación ya guardada: nota, color, grosor y el dibujo
+    (se puede seguir dibujando encima de los trazos que ya tenía, o borrar
+    todo y empezar de nuevo — el botón de lápiz en la lista precarga todo
+    eso en el mismo formulario/canvas que se usa para crear). El momento
+    (time_seconds) de la anotación no cambia al editarla.
+    """
+    redirect = require_login(request)
+    if redirect:
+        return redirect
+
+    with Session(engine) as session:
+        ann = session.get(Annotation, annotation_id)
+        if not ann:
+            return RedirectResponse(url="/?msg=Esa anotación no existe.", status_code=303)
+        video_id = ann.video_id
+
+        form = await request.form()
+
+        try:
+            stroke_width = min(20.0, max(1.0, float(form.get("stroke_width") or ann.stroke_width)))
+        except ValueError:
+            stroke_width = ann.stroke_width
+
+        color = (form.get("color") or ann.color).strip()
+        if color not in ALLOWED_ANNOTATION_COLORS:
+            color = ann.color
+
+        drawing_data = form.get("drawing_data") or "{}"
+        if len(drawing_data) > MAX_DRAWING_DATA_BYTES:
+            return RedirectResponse(
+                url=f"/videos/{video_id}?msg=El dibujo quedó demasiado grande — prueba con menos trazos.",
+                status_code=303,
+            )
+
+        ann.color = color
+        ann.stroke_width = stroke_width
+        ann.drawing_data = drawing_data
+        ann.note = (form.get("note") or "").strip()
+        session.add(ann)
+        session.commit()
+
+    return RedirectResponse(
+        url=f"/videos/{video_id}?msg=Anotación actualizada.&highlight={annotation_id}", status_code=303
+    )
+
+
 @app.post("/annotations/{annotation_id}/delete")
 def annotation_delete(annotation_id: int, request: Request):
     redirect = require_login(request)
@@ -1000,3 +1058,77 @@ def annotation_delete(annotation_id: int, request: Request):
         session.commit()
 
     return RedirectResponse(url=f"/videos/{video_id}?msg=Anotación eliminada.", status_code=303)
+
+
+# ------------------------------------------------------- link público -----
+# El profesor comparte /watch/{share_token} con un estudiante para que vea
+# sus anotaciones de un video sin entrar al panel de notas y tareas (no pide
+# contraseña — el token largo y aleatorio es lo que lo protege de que
+# cualquiera lo adivine). Es una versión de solo lectura de video_review: el
+# mismo reproductor con línea de tiempo, marcadores y clic-para-saltar, pero
+# sin la barra de dibujo, el botón de nueva anotación, ni los de editar o
+# eliminar.
+
+
+@app.get("/watch/{share_token}")
+def public_review(share_token: str, request: Request):
+    with Session(engine) as session:
+        video = session.exec(select(Video).where(Video.share_token == share_token)).first()
+        if not video:
+            return templates.TemplateResponse("public_not_found.html", {"request": request}, status_code=404)
+
+        assignment = session.get(Assignment, video.assignment_id)
+        student = session.get(Student, video.student_id)
+        if not assignment or not student:
+            return templates.TemplateResponse("public_not_found.html", {"request": request}, status_code=404)
+
+        annotations = session.exec(
+            select(Annotation).where(Annotation.video_id == video.id).order_by(Annotation.time_seconds)
+        ).all()
+        annotations_ctx = [
+            {
+                "id": a.id,
+                "time_display": fmt_time_mmss(a.time_seconds),
+                "color": a.color if a.color in ALLOWED_ANNOTATION_COLORS else "#5b7cfa",
+                "note": a.note,
+            }
+            for a in annotations
+        ]
+        annotations_json = json.dumps(
+            [
+                {
+                    "id": a.id,
+                    "time_seconds": a.time_seconds,
+                    "color": a.color if a.color in ALLOWED_ANNOTATION_COLORS else "#5b7cfa",
+                    "drawing_data": a.drawing_data,
+                }
+                for a in annotations
+            ]
+        ).replace("</", "<\\/")
+
+    return templates.TemplateResponse(
+        "public_review.html",
+        {
+            "request": request,
+            "video": video,
+            "assignment": assignment,
+            "student": student,
+            "annotations": annotations_ctx,
+            "annotations_json": annotations_json,
+            "share_token": share_token,
+        },
+    )
+
+
+@app.get("/watch/{share_token}/stream")
+def public_stream(share_token: str):
+    with Session(engine) as session:
+        video = session.exec(select(Video).where(Video.share_token == share_token)).first()
+
+    if not video:
+        return Response(status_code=404)
+    if not storage.is_configured():
+        return Response(status_code=503)
+
+    url = storage.presigned_get_url(video.object_key)
+    return RedirectResponse(url=url, status_code=307)

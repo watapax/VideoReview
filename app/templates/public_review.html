@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ video.label }} · {{ student.name }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap">
+  <link rel="stylesheet" href="/static/styles.css">
+  <style>
+    /* Página standalone (no extiende base.html: sin sidebar, sin sesión, sin
+       nada del panel de notas y tareas) — reutiliza los mismos componentes
+       visuales de video_review.html (.review-shell, .review-player, etc.)
+       pero necesita darles ella misma el contexto de altura completa que
+       normalmente les daba .app-shell/.app-main. */
+    html, body { height: 100%; }
+    .public-shell { min-height: 100vh; display: flex; flex-direction: column; }
+  </style>
+</head>
+<body>
+  <div class="public-shell">
+    <div class="review-shell">
+      <div class="review-topbar">
+        <span class="review-topbar-crumb"><strong style="color:var(--text);">{{ student.name }}</strong> · {{ assignment.name }}</span>
+        <span class="pill review-label-pill">{{ video.label }}</span>
+      </div>
+
+      <div class="review-layout">
+        <div class="review-main">
+          <div class="review-player" id="review-player">
+            <div class="review-video-wrap" id="video-wrap">
+              <video id="review-video" preload="metadata" src="/watch/{{ share_token }}/stream"></video>
+              <canvas id="draw-canvas"></canvas>
+            </div>
+
+            <div class="player-controls">
+              <button type="button" class="icon-btn player-btn" id="playpause-btn" title="Reproducir / pausar">
+                <svg id="play-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+                <svg id="pause-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none" hidden><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+              </button>
+              <span class="player-time" id="player-time">0:00 / 0:00</span>
+
+              <div class="annotation-timeline" id="annotation-timeline">
+                <div class="annotation-timeline-fill" id="timeline-fill"></div>
+                <div class="annotation-timeline-playhead" id="timeline-playhead"></div>
+              </div>
+
+              <button type="button" class="icon-btn player-btn" id="mute-btn" title="Silenciar / activar sonido">
+                <svg id="volume-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+                <svg id="muted-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" hidden><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
+              </button>
+              <button type="button" class="icon-btn player-btn" id="fullscreen-btn" title="Pantalla completa">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <p class="videos-hint" style="margin-top:14px;">Toca una anotación de la lista, o el rombo correspondiente en la línea de tiempo, para saltar directo a ese momento y ver el dibujo del profesor.</p>
+        </div>
+
+        <div class="annotations-panel">
+          <div class="annotations-panel-header">
+            <div class="annotations-panel-title">Anotaciones <span class="muted">({{ annotations|length }})</span></div>
+          </div>
+
+          <div class="annotations-list">
+            {% for a in annotations %}
+            <div class="annotation-row" data-id="{{ a.id }}">
+              <div class="annotation-dot" style="background:{{ a.color }};"></div>
+              <div class="annotation-row-body">
+                <div class="annotation-time">{{ a.time_display }}</div>
+                {% if a.note %}<div class="annotation-note">{{ a.note }}</div>{% endif %}
+              </div>
+            </div>
+            {% else %}
+            <div class="annotations-empty">Todavía no hay anotaciones del profesor en este video.</div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script type="application/json" id="annotations-data">{{ annotations_json|safe }}</script>
+<script>
+(function () {
+  // Versión de solo lectura del reproductor de video_review.html: mismo
+  // reproductor propio (una sola línea de tiempo con marcadores, arrastre
+  // fluido, clic-para-saltar y redibujado del trazo guardado), pero sin
+  // nada de crear/editar/eliminar anotaciones — el estudiante solo mira.
+  const video = document.getElementById('review-video');
+  const canvas = document.getElementById('draw-canvas');
+  const ctx = canvas.getContext('2d');
+  const timeline = document.getElementById('annotation-timeline');
+  const timelineFill = document.getElementById('timeline-fill');
+  const timelinePlayhead = document.getElementById('timeline-playhead');
+  const reviewPlayer = document.getElementById('review-player');
+  const playPauseBtn = document.getElementById('playpause-btn');
+  const playIcon = document.getElementById('play-icon');
+  const pauseIcon = document.getElementById('pause-icon');
+  const playerTime = document.getElementById('player-time');
+  const muteBtn = document.getElementById('mute-btn');
+  const volumeIcon = document.getElementById('volume-icon');
+  const mutedIcon = document.getElementById('muted-icon');
+  const fullscreenBtn = document.getElementById('fullscreen-btn');
+
+  const ANNOTATIONS = JSON.parse(document.getElementById('annotations-data').textContent || '[]');
+
+  let shownAnnotationId = null;
+  let suppressSeekClear = false;
+
+  function fmtTime(s) {
+    s = Math.max(0, s || 0);
+    const m = Math.floor(s / 60);
+    const sec = (s % 60).toFixed(1);
+    return m + ':' + (sec < 10 ? '0' : '') + sec;
+  }
+  function fmtClock(s) {
+    s = Math.max(0, Math.floor(s || 0));
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return m + ':' + (sec < 10 ? '0' : '') + sec;
+  }
+
+  function resizeCanvas() {
+    const rect = video.getBoundingClientRect();
+    canvas.width = Math.max(1, Math.round(rect.width));
+    canvas.height = Math.max(1, Math.round(rect.height));
+    redraw();
+  }
+
+  function drawStrokesArray(strokeList) {
+    strokeList.forEach(stroke => {
+      if (!stroke.points || stroke.points.length < 1) return;
+      ctx.strokeStyle = stroke.color || '#5b7cfa';
+      ctx.lineWidth = stroke.width || 4;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      stroke.points.forEach((p, i) => {
+        const x = p[0] * canvas.width, y = p[1] * canvas.height;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+    });
+  }
+
+  function redraw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (shownAnnotationId == null) return;
+    const ann = ANNOTATIONS.find(a => a.id === shownAnnotationId);
+    if (!ann) return;
+    try {
+      const data = JSON.parse(ann.drawing_data || '{}');
+      drawStrokesArray(data.strokes || []);
+    } catch (e) { /* dibujo vacío o inválido */ }
+  }
+
+  function highlightRow(id) {
+    document.querySelectorAll('.annotation-row').forEach(row => {
+      row.classList.toggle('active', id != null && String(row.dataset.id) === String(id));
+    });
+    document.querySelectorAll('.annotation-timeline-marker').forEach(m => {
+      m.classList.toggle('active', id != null && String(m.dataset.id) === String(id));
+    });
+  }
+
+  function showAnnotation(id) {
+    const ann = ANNOTATIONS.find(a => a.id === id);
+    if (!ann) return;
+    shownAnnotationId = id;
+    highlightRow(id);
+    suppressSeekClear = Math.abs(video.currentTime - ann.time_seconds) > 0.01;
+    video.currentTime = ann.time_seconds;
+    redraw();
+    const row = document.querySelector('.annotation-row[data-id="' + id + '"]');
+    if (row) row.scrollIntoView({ block: 'nearest' });
+  }
+
+  function clearAnnotationView() {
+    if (shownAnnotationId == null) return;
+    shownAnnotationId = null;
+    highlightRow(null);
+    redraw();
+  }
+
+  function buildTimelineMarkers() {
+    if (!video.duration || !isFinite(video.duration)) return;
+    timeline.querySelectorAll('.annotation-timeline-marker').forEach(m => m.remove());
+    ANNOTATIONS.forEach(ann => {
+      const pct = Math.min(100, Math.max(0, (ann.time_seconds / video.duration) * 100));
+      const marker = document.createElement('div');
+      marker.className = 'annotation-timeline-marker';
+      marker.dataset.id = ann.id;
+      marker.style.left = pct + '%';
+      marker.style.background = ann.color;
+      marker.title = fmtTime(ann.time_seconds);
+      marker.addEventListener('click', e => {
+        e.stopPropagation();
+        showAnnotation(ann.id);
+      });
+      timeline.appendChild(marker);
+    });
+  }
+
+  function updatePlayhead() {
+    if (!video.duration || !isFinite(video.duration)) return;
+    const pct = Math.min(100, Math.max(0, (video.currentTime / video.duration) * 100));
+    timelineFill.style.width = pct + '%';
+    timelinePlayhead.style.left = pct + '%';
+    playerTime.textContent = fmtClock(video.currentTime) + ' / ' + fmtClock(video.duration);
+  }
+
+  let scrubbing = false;
+  function seekFromPointer(e) {
+    if (!video.duration || !isFinite(video.duration)) return;
+    const rect = timeline.getBoundingClientRect();
+    const pct = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+    video.currentTime = pct * video.duration;
+  }
+  timeline.addEventListener('pointerdown', e => {
+    if (e.target.classList.contains('annotation-timeline-marker')) return;
+    scrubbing = true;
+    timeline.setPointerCapture(e.pointerId);
+    seekFromPointer(e);
+  });
+  timeline.addEventListener('pointermove', e => { if (scrubbing) seekFromPointer(e); });
+  function endScrub() { scrubbing = false; }
+  timeline.addEventListener('pointerup', endScrub);
+  timeline.addEventListener('pointercancel', endScrub);
+
+  video.addEventListener('timeupdate', updatePlayhead);
+  video.addEventListener('seeked', () => {
+    if (suppressSeekClear) { suppressSeekClear = false; return; }
+    clearAnnotationView();
+  });
+  video.addEventListener('play', () => { clearAnnotationView(); syncPlayPauseIcon(); });
+  video.addEventListener('pause', syncPlayPauseIcon);
+
+  function syncPlayPauseIcon() {
+    playIcon.hidden = !video.paused;
+    pauseIcon.hidden = video.paused;
+  }
+  playPauseBtn.addEventListener('click', () => { if (video.paused) video.play(); else video.pause(); });
+
+  function syncMuteIcon() {
+    volumeIcon.hidden = video.muted;
+    mutedIcon.hidden = !video.muted;
+  }
+  muteBtn.addEventListener('click', () => { video.muted = !video.muted; syncMuteIcon(); });
+
+  fullscreenBtn.addEventListener('click', () => {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else if (reviewPlayer.requestFullscreen) reviewPlayer.requestFullscreen();
+  });
+  document.addEventListener('fullscreenchange', resizeCanvas);
+
+  document.querySelectorAll('.annotation-row').forEach(row => {
+    row.addEventListener('click', () => showAnnotation(parseInt(row.dataset.id, 10)));
+  });
+
+  function onVideoReady() {
+    resizeCanvas();
+    buildTimelineMarkers();
+    updatePlayhead();
+    syncPlayPauseIcon();
+    syncMuteIcon();
+  }
+  video.addEventListener('loadedmetadata', onVideoReady);
+  window.addEventListener('resize', resizeCanvas);
+  if (video.readyState >= 1) onVideoReady();
+})();
+</script>
+</body>
+</html>

@@ -72,18 +72,25 @@ contenedor.
 - **Anotar video** (botón "Anotar" en cada video): pausa el video donde
   quieras comentar, dibuja libremente encima (color y grosor a elección) y
   escribe una nota — queda guardado en ese segundo exacto del video. La
-  lista de anotaciones de la derecha las muestra todas y permite
-  eliminarlas. Debajo del video hay una línea de tiempo propia con un
-  marcador en forma de rombo por cada anotación (del color de esa
-  anotación) — al hacer clic en un marcador o en una anotación de la lista,
-  el video salta directo a ese momento, vuelve a mostrar el dibujo guardado
-  encima, y la anotación queda resaltada tanto en la lista como en la línea
-  de tiempo.
+  lista de anotaciones de la derecha las muestra todas, y el lápiz de cada
+  una permite editar su dibujo/nota después de creada (el papelero,
+  eliminarla). El reproductor es propio (no el del navegador) con una sola
+  línea de tiempo — sin barras dobles — que se puede arrastrar de forma
+  fluida y que muestra un marcador en forma de rombo por cada anotación
+  (del color de esa anotación). Al hacer clic en un marcador o en una
+  anotación de la lista, el video salta directo a ese momento, vuelve a
+  mostrar el dibujo guardado encima, y la anotación queda resaltada tanto
+  en la lista como en la línea de tiempo.
+- **Compartir con el estudiante** (botón "Compartir" en la pantalla de
+  anotar, o "Copiar link para el estudiante" en cada video de la pestaña
+  Videos): copia un link público al portapapeles. Quien lo abra ve el video
+  y las anotaciones de ese video (solo lectura, sin poder editar ni
+  eliminar nada) sin necesitar la contraseña ni acceso al resto del panel
+  de notas y tareas.
 
 ## Qué falta (fases siguientes)
 
-- Editar anotaciones ya guardadas (por ahora solo se pueden crear y
-  eliminar), y manejo más pulido de varios videos por tarea+estudiante.
+- Manejo más pulido de cuando hay varios videos por tarea+estudiante.
 - Exportación a PDF "de verdad" (por ahora es imprimir la página del
   informe desde el navegador, que ya se ve bien pero no es un PDF generado
   por el backend).

@@ -12,47 +12,69 @@
     <div class="review-topbar-sep"></div>
     <span class="review-topbar-crumb">{{ student.name }} · {{ assignment.name }}</span>
     <span class="pill review-label-pill">{{ video.label }}</span>
+    <button type="button" class="btn secondary review-share-btn" id="share-btn" data-share-url="{{ share_url }}" title="Copiar link para que el estudiante vea sus anotaciones">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="M16 6l-4-4-4 4"/><path d="M12 2v14"/></svg>
+      <span id="share-btn-label">Compartir</span>
+    </button>
   </div>
 
   <div class="review-layout">
     <div class="review-main">
-      <div class="review-video-wrap" id="video-wrap">
-        <video id="review-video" controls preload="metadata" src="/videos/{{ video.id }}/stream"></video>
-        <canvas id="draw-canvas"></canvas>
+      <div class="review-player" id="review-player">
+        <div class="review-video-wrap" id="video-wrap">
+          <video id="review-video" preload="metadata" src="/videos/{{ video.id }}/stream"></video>
+          <canvas id="draw-canvas"></canvas>
 
-        <div class="draw-toolbar" id="draw-toolbar" hidden>
-          <div class="draw-toolbar-group">
-            <button type="button" class="icon-btn" id="undo-btn" title="Deshacer último trazo">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
-            </button>
-            <button type="button" class="icon-btn" id="clear-btn" title="Borrar todo el dibujo">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
-            </button>
+          <div class="draw-toolbar" id="draw-toolbar" hidden>
+            <div class="draw-toolbar-group">
+              <button type="button" class="icon-btn" id="undo-btn" title="Deshacer último trazo">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+              </button>
+              <button type="button" class="icon-btn" id="clear-btn" title="Borrar todo el dibujo">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+              </button>
+            </div>
+            <div class="draw-toolbar-group">
+              {% for c in colors %}
+              <button type="button" class="color-swatch {{ 'active' if loop.first else '' }}" data-color="{{ c }}" style="background:{{ c }};" title="Color"></button>
+              {% endfor %}
+            </div>
+            <div class="draw-toolbar-group">
+              <button type="button" class="width-btn" data-width="3" title="Trazo fino"><span style="width:5px; height:5px;"></span></button>
+              <button type="button" class="width-btn active" data-width="6" title="Trazo medio"><span style="width:8px; height:8px;"></span></button>
+              <button type="button" class="width-btn" data-width="10" title="Trazo grueso"><span style="width:12px; height:12px;"></span></button>
+            </div>
+            <span class="draw-toolbar-time" id="draw-time-readout"></span>
           </div>
-          <div class="draw-toolbar-group">
-            {% for c in colors %}
-            <button type="button" class="color-swatch {{ 'active' if loop.first else '' }}" data-color="{{ c }}" style="background:{{ c }};" title="Color"></button>
-            {% endfor %}
-          </div>
-          <div class="draw-toolbar-group">
-            <button type="button" class="width-btn" data-width="3" title="Trazo fino"><span style="width:5px; height:5px;"></span></button>
-            <button type="button" class="width-btn active" data-width="6" title="Trazo medio"><span style="width:8px; height:8px;"></span></button>
-            <button type="button" class="width-btn" data-width="10" title="Trazo grueso"><span style="width:12px; height:12px;"></span></button>
-          </div>
-          <span class="draw-toolbar-time" id="draw-time-readout"></span>
         </div>
-      </div>
 
-      <div class="annotation-timeline" id="annotation-timeline">
-        <div class="annotation-timeline-fill" id="timeline-fill"></div>
-        <div class="annotation-timeline-playhead" id="timeline-playhead"></div>
+        <div class="player-controls">
+          <button type="button" class="icon-btn player-btn" id="playpause-btn" title="Reproducir / pausar">
+            <svg id="play-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+            <svg id="pause-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none" hidden><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+          </button>
+          <span class="player-time" id="player-time">0:00 / 0:00</span>
+
+          <div class="annotation-timeline" id="annotation-timeline">
+            <div class="annotation-timeline-fill" id="timeline-fill"></div>
+            <div class="annotation-timeline-playhead" id="timeline-playhead"></div>
+          </div>
+
+          <button type="button" class="icon-btn player-btn" id="mute-btn" title="Silenciar / activar sonido">
+            <svg id="volume-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+            <svg id="muted-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" hidden><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
+          </button>
+          <button type="button" class="icon-btn player-btn" id="fullscreen-btn" title="Pantalla completa">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+          </button>
+        </div>
       </div>
 
       <div class="review-actions">
         <button type="button" class="btn" id="new-annotation-btn">+ Nueva anotación</button>
         <div id="creating-actions" class="review-actions-creating" hidden>
           <button type="button" class="btn secondary" id="cancel-btn">Cancelar</button>
-          <button type="submit" form="annotation-form" class="btn">Guardar anotación</button>
+          <button type="submit" form="annotation-form" class="btn" id="save-annotation-btn">Guardar anotación</button>
         </div>
       </div>
     </div>
@@ -69,7 +91,7 @@
         </div>
 
         <div class="new-annotation-box" id="new-annotation-box" hidden>
-          <div class="new-annotation-label">Nueva anotación · <span id="new-annotation-time"></span></div>
+          <div class="new-annotation-label"><span id="new-annotation-label-text">Nueva anotación</span> · <span id="new-annotation-time"></span></div>
           <textarea name="note" placeholder="Feedback para este momento del video…" maxlength="2000"></textarea>
         </div>
       </form>
@@ -82,11 +104,16 @@
             <div class="annotation-time">{{ a.time_display }}</div>
             {% if a.note %}<div class="annotation-note">{{ a.note }}</div>{% endif %}
           </div>
-          <form method="post" action="/annotations/{{ a.id }}/delete" class="annotation-delete-form" onsubmit="return confirm('¿Eliminar esta anotación?');">
-            <button type="submit" class="icon-btn" title="Eliminar anotación">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+          <div class="annotation-row-actions">
+            <button type="button" class="icon-btn annotation-edit-btn" title="Editar anotación">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
             </button>
-          </form>
+            <form method="post" action="/annotations/{{ a.id }}/delete" class="annotation-delete-form" onsubmit="return confirm('¿Eliminar esta anotación?');">
+              <button type="submit" class="icon-btn" title="Eliminar anotación">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+              </button>
+            </form>
+          </div>
         </div>
         {% else %}
         <div class="annotations-empty">Todavía no hay anotaciones. Pausa el video donde quieras comentar y toca "+ Nueva anotación".</div>
@@ -121,16 +148,33 @@
   const timeline = document.getElementById('annotation-timeline');
   const timelineFill = document.getElementById('timeline-fill');
   const timelinePlayhead = document.getElementById('timeline-playhead');
+  const reviewPlayer = document.getElementById('review-player');
+  const playPauseBtn = document.getElementById('playpause-btn');
+  const playIcon = document.getElementById('play-icon');
+  const pauseIcon = document.getElementById('pause-icon');
+  const playerTime = document.getElementById('player-time');
+  const muteBtn = document.getElementById('mute-btn');
+  const volumeIcon = document.getElementById('volume-icon');
+  const mutedIcon = document.getElementById('muted-icon');
+  const fullscreenBtn = document.getElementById('fullscreen-btn');
+  const shareBtn = document.getElementById('share-btn');
+  const shareBtnLabel = document.getElementById('share-btn-label');
+  const newAnnotationLabelText = document.getElementById('new-annotation-label-text');
+  const saveAnnotationBtn = document.getElementById('save-annotation-btn');
+  const CREATE_URL = form.getAttribute('action');
 
-  // Datos completos de cada anotación (tiempo, color, trazos) para poder
-  // redibujarlas sin pedirle nada más al servidor, y el id (si viene) de la
-  // anotación recién guardada para saltar a ella apenas carga la página —
-  // así el dibujo que se hizo antes de guardar no "desaparece": no se había
-  // perdido, solo no se volvía a mostrar.
+  // Datos completos de cada anotación (tiempo, color, ancho, trazos, nota)
+  // para poder redibujarlas y precargarlas al editar sin pedirle nada más al
+  // servidor, y el id (si viene) de la anotación recién guardada para saltar
+  // a ella apenas carga la página — así el dibujo que se hizo antes de
+  // guardar no "desaparece": no se había perdido, solo no se volvía a mostrar.
   const ANNOTATIONS = JSON.parse(document.getElementById('annotations-data').textContent || '[]');
   const HIGHLIGHT_ID = {{ highlight_id or 'null' }};
 
   let creating = false;
+  // null mientras se crea una anotación nueva; el id de la anotación que se
+  // está editando cuando se entró por el lápiz de la lista.
+  let editingId = null;
   let strokes = [];
   let currentStroke = null;
   let selectedColor = fieldColor.value;
@@ -146,6 +190,16 @@
     s = Math.max(0, s || 0);
     const m = Math.floor(s / 60);
     const sec = (s % 60).toFixed(1);
+    return m + ':' + (sec < 10 ? '0' : '') + sec;
+  }
+
+  // Formato de reloj sin decimales (0:07 / 1:23) para el contador del
+  // reproductor — a diferencia de fmtTime, que sí necesita el decimal para
+  // marcar el segundo exacto de una anotación.
+  function fmtClock(s) {
+    s = Math.max(0, Math.floor(s || 0));
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
     return m + ':' + (sec < 10 ? '0' : '') + sec;
   }
 
@@ -253,22 +307,88 @@
     const pct = Math.min(100, Math.max(0, (video.currentTime / video.duration) * 100));
     timelineFill.style.width = pct + '%';
     timelinePlayhead.style.left = pct + '%';
+    playerTime.textContent = fmtClock(video.currentTime) + ' / ' + fmtClock(video.duration);
   }
 
-  timeline.addEventListener('click', e => {
-    if (e.target.classList.contains('annotation-timeline-marker')) return;
+  // Única línea de tiempo (no la barra nativa del navegador — el <video> no
+  // tiene el atributo `controls`, este reproductor es 100% propio) con
+  // arrastre fluido: pointerdown+pointermove+pointerup en vez de un solo
+  // 'click', para que currentTime se actualice en cada frame del arrastre y
+  // no solo al soltar el mouse.
+  let scrubbing = false;
+  function seekFromPointer(e) {
     if (!video.duration || !isFinite(video.duration)) return;
     const rect = timeline.getBoundingClientRect();
     const pct = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
     video.currentTime = pct * video.duration;
+  }
+  timeline.addEventListener('pointerdown', e => {
+    if (e.target.classList.contains('annotation-timeline-marker')) return;
+    scrubbing = true;
+    timeline.setPointerCapture(e.pointerId);
+    seekFromPointer(e);
   });
+  timeline.addEventListener('pointermove', e => {
+    if (!scrubbing) return;
+    seekFromPointer(e);
+  });
+  function endScrub() { scrubbing = false; }
+  timeline.addEventListener('pointerup', endScrub);
+  timeline.addEventListener('pointercancel', endScrub);
 
   video.addEventListener('timeupdate', updatePlayhead);
   video.addEventListener('seeked', () => {
     if (suppressSeekClear) { suppressSeekClear = false; return; }
     clearAnnotationView();
   });
-  video.addEventListener('play', clearAnnotationView);
+  video.addEventListener('play', () => { clearAnnotationView(); syncPlayPauseIcon(); });
+  video.addEventListener('pause', syncPlayPauseIcon);
+
+  function syncPlayPauseIcon() {
+    playIcon.hidden = !video.paused;
+    pauseIcon.hidden = video.paused;
+  }
+  playPauseBtn.addEventListener('click', () => {
+    if (video.paused) video.play(); else video.pause();
+  });
+
+  function syncMuteIcon() {
+    volumeIcon.hidden = video.muted;
+    mutedIcon.hidden = !video.muted;
+  }
+  muteBtn.addEventListener('click', () => {
+    video.muted = !video.muted;
+    syncMuteIcon();
+  });
+
+  // Se pone en pantalla completa el contenedor del reproductor entero (video
+  // + controles propios), no el <video> por sí solo — así los controles y el
+  // canvas de dibujo (superpuesto al video) se ven igual en pantalla
+  // completa. resizeCanvas() se vuelve a llamar al entrar/salir porque el
+  // tamaño del video cambia.
+  fullscreenBtn.addEventListener('click', () => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    } else if (reviewPlayer.requestFullscreen) {
+      reviewPlayer.requestFullscreen();
+    }
+  });
+  document.addEventListener('fullscreenchange', resizeCanvas);
+
+  if (shareBtn) {
+    shareBtn.addEventListener('click', async () => {
+      const url = shareBtn.dataset.shareUrl;
+      try {
+        await navigator.clipboard.writeText(url);
+      } catch (e) {
+        window.prompt('Copia este link:', url);
+        return;
+      }
+      const original = shareBtnLabel.textContent;
+      shareBtnLabel.textContent = '¡Copiado!';
+      setTimeout(() => { shareBtnLabel.textContent = original; }, 1800);
+    });
+  }
 
   document.querySelectorAll('.annotation-row').forEach(row => {
     row.addEventListener('click', () => {
@@ -277,6 +397,14 @@
   });
   document.querySelectorAll('.annotation-delete-form').forEach(f => {
     f.addEventListener('click', e => e.stopPropagation());
+  });
+  document.querySelectorAll('.annotation-edit-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const row = btn.closest('.annotation-row');
+      const ann = ANNOTATIONS.find(a => String(a.id) === row.dataset.id);
+      if (ann) enterEditing(ann);
+    });
   });
 
   function pointFromEvent(e) {
@@ -327,12 +455,34 @@
     });
   });
 
+  // Selecciona en la barra de dibujo el color/grosor de una anotación
+  // existente (al entrar a editarla), para que el trazo nuevo que se dibuje
+  // encima siga con su mismo estilo por defecto.
+  function selectColorAndWidth(color, width) {
+    selectedColor = color;
+    fieldColor.value = color;
+    document.querySelectorAll('.color-swatch').forEach(b => {
+      b.classList.toggle('active', b.dataset.color === color);
+    });
+    selectedWidth = width;
+    fieldWidth.value = width;
+    document.querySelectorAll('.width-btn').forEach(b => {
+      b.classList.toggle('active', parseFloat(b.dataset.width) === width);
+    });
+  }
+
   function enterCreating() {
     clearAnnotationView();
+    highlightRow(null);
     video.pause();
     creating = true;
+    editingId = null;
+    form.setAttribute('action', CREATE_URL);
+    newAnnotationLabelText.textContent = 'Nueva anotación';
+    saveAnnotationBtn.textContent = 'Guardar anotación';
     strokes = [];
     currentStroke = null;
+    noteInput.value = '';
     const t = video.currentTime || 0;
     fieldTime.value = t;
     newTimeLabel.textContent = fmtTime(t);
@@ -345,8 +495,53 @@
     redraw();
   }
 
+  // Reutiliza la misma barra de dibujo/nota que "Nueva anotación", pero
+  // precargada con el trazo, color, grosor y nota que la anotación ya
+  // tenía, y publicando a /annotations/{id}/edit en vez de crear una nueva.
+  // El momento (segundo) de la anotación no se puede mover desde acá.
+  function enterEditing(ann) {
+    video.pause();
+    creating = true;
+    editingId = ann.id;
+    form.setAttribute('action', '/annotations/' + ann.id + '/edit');
+    newAnnotationLabelText.textContent = 'Editando anotación';
+    saveAnnotationBtn.textContent = 'Guardar cambios';
+
+    let savedStrokes = [];
+    try {
+      savedStrokes = (JSON.parse(ann.drawing_data || '{}').strokes || []);
+    } catch (e) { /* dibujo vacío o inválido */ }
+    strokes = savedStrokes.map(s => ({ points: s.points, color: s.color, width: s.width }));
+    currentStroke = null;
+
+    shownAnnotationId = null;
+    highlightRow(ann.id);
+
+    selectColorAndWidth(ann.color, ann.stroke_width || selectedWidth);
+    fieldTime.value = ann.time_seconds;
+    newTimeLabel.textContent = fmtTime(ann.time_seconds);
+    drawTimeReadout.textContent = 'Editando en ' + fmtTime(ann.time_seconds);
+    noteInput.value = ann.note || '';
+
+    toolbar.hidden = false;
+    newBox.hidden = false;
+    newBtn.hidden = true;
+    creatingActions.hidden = false;
+    canvas.style.pointerEvents = 'auto';
+
+    suppressSeekClear = Math.abs(video.currentTime - ann.time_seconds) > 0.01;
+    video.currentTime = ann.time_seconds;
+    redraw();
+    const row = document.querySelector('.annotation-row[data-id="' + ann.id + '"]');
+    if (row) row.scrollIntoView({ block: 'nearest' });
+  }
+
   function exitCreating() {
     creating = false;
+    editingId = null;
+    form.setAttribute('action', CREATE_URL);
+    newAnnotationLabelText.textContent = 'Nueva anotación';
+    saveAnnotationBtn.textContent = 'Guardar anotación';
     strokes = [];
     currentStroke = null;
     toolbar.hidden = true;
@@ -355,6 +550,7 @@
     creatingActions.hidden = true;
     canvas.style.pointerEvents = 'none';
     noteInput.value = '';
+    highlightRow(null);
     redraw();
   }
 
@@ -377,6 +573,8 @@
     resizeCanvas();
     buildTimelineMarkers();
     updatePlayhead();
+    syncPlayPauseIcon();
+    syncMuteIcon();
     if (HIGHLIGHT_ID != null) showAnnotation(HIGHLIGHT_ID);
   }
   video.addEventListener('loadedmetadata', onVideoReady);

@@ -307,9 +307,18 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 .review-topbar-sep { width: 1px; height: 16px; background: var(--border-strong); }
 .review-topbar-crumb { font-size: 13px; color: var(--muted-2); }
 .review-label-pill { margin-left: auto; background: var(--card); }
+.review-share-btn { display: flex; align-items: center; gap: 6px; padding: 7px 12px; font-size: 12.5px; }
 
 .review-layout { flex: 1; display: flex; min-height: 0; }
 .review-main { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 20px 24px; }
+
+/* Envuelve el video+canvas y la barra de controles propia, para que al
+   entrar a pantalla completa (fullscreenBtn pone ESTE contenedor en
+   fullscreen, no el <video> solo) los controles y el dibujo superpuesto
+   sigan visibles en vez de desaparecer detrás del render nativo del video. */
+.review-player { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.review-player:fullscreen { background: #000; padding: 10px 16px; }
+.review-player:fullscreen .review-video-wrap { border-radius: 0; border: none; }
 
 .review-video-wrap {
   position: relative; background: #000; border-radius: var(--radius-lg); overflow: hidden;
@@ -357,14 +366,25 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 .review-actions { display: flex; align-items: center; gap: 8px; margin-top: 14px; flex-shrink: 0; }
 .review-actions-creating { display: flex; gap: 8px; }
 
-/* Línea de tiempo con marcadores de anotaciones (fase 3). Es una barra
-   propia debajo del video (no la barra nativa de <video controls>, que no
-   se puede decorar) — el relleno y la cabeza de reproducción se mueven con
-   'timeupdate', y cada anotación se dibuja como un rombo (cuadrado rotado
-   45°) en su posición proporcional, con el color de esa anotación. */
+/* Barra de controles propia del reproductor (play/pausa, tiempo, la única
+   línea de tiempo con marcadores de anotaciones, silencio y pantalla
+   completa) — reemplaza los controles nativos del navegador (el <video> no
+   lleva el atributo `controls`) para que no haya dos barras de tiempo
+   compitiendo por el arrastre. */
+.player-controls { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-shrink: 0; }
+.player-btn { width: 30px; height: 30px; }
+.player-time { font-size: 11.5px; color: var(--muted-2); font-variant-numeric: tabular-nums; flex-shrink: 0; min-width: 76px; }
+
+/* Línea de tiempo con marcadores de anotaciones (fase 3), integrada en la
+   barra de controles como la única forma de buscar en el video — el
+   relleno y la cabeza de reproducción se mueven con 'timeupdate', y cada
+   anotación se dibuja como un rombo (cuadrado rotado 45°) en su posición
+   proporcional, con el color de esa anotación. El arrastre es con Pointer
+   Events (pointerdown/move/up), no un solo 'click', para que currentTime se
+   actualice en cada frame mientras se arrastra, de forma fluida. */
 .annotation-timeline {
-  position: relative; height: 20px; margin-top: 10px; flex-shrink: 0;
-  cursor: pointer;
+  position: relative; height: 20px; flex: 1; min-width: 0;
+  cursor: pointer; touch-action: none;
 }
 .annotation-timeline::before {
   content: ""; position: absolute; top: 50%; left: 0; right: 0; height: 4px;
@@ -376,10 +396,11 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
   pointer-events: none;
 }
 .annotation-timeline-playhead {
-  position: absolute; top: 50%; left: 0; width: 10px; height: 10px;
-  transform: translate(-50%, -50%); border-radius: 50%;
-  background: var(--text); box-shadow: 0 0 0 2px var(--panel); pointer-events: none;
+  position: absolute; top: 50%; left: 0; width: 12px; height: 12px;
+  transform: translate(-50%, -50%); border-radius: 50%; cursor: grab;
+  background: var(--text); box-shadow: 0 0 0 2px var(--panel); pointer-events: auto;
 }
+.annotation-timeline-playhead:active { cursor: grabbing; }
 .annotation-timeline-marker {
   position: absolute; top: 50%; width: 9px; height: 9px;
   transform: translate(-50%, -50%) rotate(45deg); border-radius: 2px;
@@ -420,4 +441,4 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
   overflow: hidden; text-overflow: ellipsis; display: -webkit-box;
   -webkit-line-clamp: 3; -webkit-box-orient: vertical;
 }
-.annotation-row form { flex-shrink: 0; }
+.annotation-row-actions { display: flex; gap: 2px; flex-shrink: 0; }

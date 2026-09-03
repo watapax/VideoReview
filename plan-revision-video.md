@@ -110,9 +110,37 @@ funcionan tanto desde la lista como desde la línea de tiempo, el trazo
 guardado se redibuja bien, y el flujo completo de crear→dibujar→guardar
 termina mostrando el dibujo (no un canvas en blanco).
 
+**Fase 4 (Pulido) — en curso.** Ya lista:
+
+- **Editar una anotación guardada**: el lápiz junto a cada anotación de la
+  lista abre el mismo editor de "nueva anotación" pero precargado con su
+  trazo, color, grosor y nota — se puede seguir dibujando encima, borrar y
+  volver a empezar, o solo cambiar el texto. El momento (segundo) de la
+  anotación no se mueve al editarla.
+- **Reproductor propio con una sola línea de tiempo**: antes convivían la
+  barra nativa del navegador y la línea de tiempo con marcadores, lo que
+  confundía (dos controles para lo mismo) y la propia no se arrastraba de
+  forma fluida (solo saltaba al soltar el clic). Ahora el `<video>` no
+  tiene controles nativos — hay un reproductor propio (play/pausa, tiempo,
+  silencio, pantalla completa) con una sola línea de tiempo que se arrastra
+  con eventos de puntero (no un solo clic), así el tiempo se actualiza en
+  cada instante del arrastre.
+- **Link público para el estudiante**: cada video tiene un token largo y
+  aleatorio (`share_token`); `/watch/{token}` es una versión de solo
+  lectura de la pantalla de anotar (mismo reproductor, sin editar/crear/
+  eliminar) que no pide contraseña — así el estudiante ve sus correcciones
+  sin entrar al panel de notas y tareas. El botón "Compartir" (en la
+  pantalla de anotar) y "Copiar link para el estudiante" (en cada tarjeta
+  de video) lo copian al portapapeles.
+
+Probado con Playwright: una sola línea de tiempo (sin controles nativos
+dobles), el arrastre actualiza el tiempo del video en cada paso (no solo al
+soltar), el lápiz precarga trazo/nota/color y guarda los cambios, el botón
+compartir copia el link correcto, y la página pública funciona (salto +
+trazo, sin ningún control de edición) desde un navegador sin sesión
+iniciada.
+
 ## Qué falta
 
-Editar una anotación ya guardada (por ahora solo se puede crear y
-eliminar), y manejo más pulido de cuando hay varios videos por
-tarea+estudiante — es la fase 4 ("Pulido") mencionada más arriba, todavía
-no empezada.
+Manejo más pulido de cuando hay varios videos por tarea+estudiante (por
+ahora cada uno se anota por separado, sin una vista que los compare).
