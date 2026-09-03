@@ -135,11 +135,25 @@ revisa que tus cursos, estudiantes y notas estén completos.
 
 ## Sobre los videos y Cloudflare R2
 
-La función de revisión de video (con las anotaciones dibujadas) todavía no
-está construida — vamos a empezar esa parte después de dejar esto
-desplegado. Cuando la construya, la app va a subir/leer los videos
-directamente desde tu bucket de R2 (no desde el volumen de Railway), así que
-puedes seguir subiendo tus archivos a R2 con tranquilidad — cuando esa
-función esté lista, solo va a necesitar que le pases las credenciales del
-bucket como variables de entorno adicionales (`railway variable set`, igual
-que en el paso 6). No se pierde nada de lo que subas ahora.
+La pestaña "Videos" (subir y ver clips `.mp4` por estudiante y tarea) ya
+está construida y sube/lee los videos directamente desde tu bucket de R2
+(no desde el volumen de Railway). Para que funcione en Railway, agrega estas
+cuatro variables además de las del paso 6 (dashboard → tu servicio →
+Variables, o por CLI con `railway variable set`):
+
+```
+railway variable set R2_ACCOUNT_ID=tu-account-id
+railway variable set R2_ACCESS_KEY_ID=tu-access-key-id
+railway variable set R2_SECRET_ACCESS_KEY=tu-secret-access-key
+railway variable set R2_BUCKET_NAME=tu-bucket
+```
+
+Las sacas del dashboard de Cloudflare: el Account ID aparece en la página
+principal de R2, y el par de credenciales sale de **R2 → Manage API
+tokens** (crea un token con permiso de lectura/escritura sobre tu bucket).
+Sin estas variables, la pestaña de Videos se ve igual pero avisa que no
+puede recibir subidas todavía — no rompe el resto de la app.
+
+La fase de dibujar/anotar sobre el video (líneas de acción, notas por
+momento del video) todavía no está construida — ver
+`plan-revision-video.md` para el plan completo.

@@ -62,12 +62,21 @@ contenedor.
 - **Informe de curso** (`/assignments/{id}/report`): informe agrupado por
   aspecto con la nota y el feedback de todo el curso, listo para exportar
   a PDF con el botón "Exportar / Imprimir" del navegador (Ctrl/Cmd+P).
+- **Videos** (pestaña dentro de Corregir): sube uno o varios videos `.mp4`
+  por estudiante y tarea (por ejemplo, distintos intentos), y revísalos con
+  los controles de tiempo normales del navegador. Los archivos se guardan
+  en un bucket de Cloudflare R2, no en el servidor — necesita las variables
+  `R2_*` configuradas (ver `.env.example`); sin ellas la pestaña se ve pero
+  avisa que no puede recibir subidas todavía. Solo se aceptan `.mp4` (se
+  valida la extensión y el contenido del archivo).
 
 ## Qué falta (fases siguientes)
 
-- Anotar/dibujar sobre los videos de los estudiantes (líneas de acción,
-  poses) con las anotaciones visibles en la línea de tiempo — es la fase 2
-  de este proyecto, todavía no empezada.
+- Dibujar libremente sobre el video en un momento específico (líneas de
+  acción, poses) con color y grosor, escribir una nota por anotación, y
+  navegar el video haciendo clic en una anotación de la lista — es la fase
+  2 de la revisión de video, todavía no empezada (ver
+  `plan-revision-video.md`).
 - Exportación a PDF "de verdad" (por ahora es imprimir la página del
   informe desde el navegador, que ya se ve bien pero no es un PDF generado
   por el backend).

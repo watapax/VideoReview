@@ -30,43 +30,86 @@
         No hay estudiantes activos todavía. <a href="/students">Agrega estudiantes →</a>
       </div>
     {% else %}
-    <form method="post" action="/assignments/{{ assignment.id }}/grade?student_id={{ current.id }}" id="grade-form">
-      <div class="grading-header">
-        <div>
-          <div style="font-size:20px; font-weight:600; font-family:'Space Grotesk',sans-serif;">{{ current.name }}</div>
+
+    <div class="grading-header">
+      <div style="font-size:20px; font-weight:600; font-family:'Space Grotesk',sans-serif;">{{ current.name }}</div>
+      <div class="grading-header-right">
+        <div class="tabs">
+          <button type="button" class="tab-btn {{ 'active' if active_tab == 'rubrica' else '' }}" data-tab="rubrica">Rúbrica</button>
+          <button type="button" class="tab-btn {{ 'active' if active_tab == 'videos' else '' }}" data-tab="videos">Videos{% if videos %} · {{ videos|length }}{% endif %}</button>
         </div>
-        <div class="final-grade">
+        <div class="final-grade" data-tab-extra="rubrica" style="{{ '' if active_tab == 'rubrica' else 'display:none;' }}">
           <div class="label">Nota final</div>
           <div class="num" id="final-grade">—</div>
         </div>
       </div>
+    </div>
 
-      <div class="aspects-grid">
-        {% for a in aspects %}
-        <div class="card aspect-card">
-          <div class="aspect-head">
-            <div class="aspect-name">{{ a.name }}</div>
-            <div class="weight">{{ a.weight_display }}%</div>
+    <div class="tab-panel" data-panel="rubrica" style="{{ '' if active_tab == 'rubrica' else 'display:none;' }}">
+      <form method="post" action="/assignments/{{ assignment.id }}/grade?student_id={{ current.id }}" id="grade-form">
+        <div class="aspects-grid">
+          {% for a in aspects %}
+          <div class="card aspect-card">
+            <div class="aspect-head">
+              <div class="aspect-name">{{ a.name }}</div>
+              <div class="weight">{{ a.weight_display }}%</div>
+            </div>
+            <div class="score-row">
+              <input type="number" step="0.1" min="{{ scale_min }}" max="{{ scale_max }}"
+                     name="score_{{ a.id }}" class="aspect-score" data-weight="{{ a.weight }}"
+                     value="{{ grades.get(a.id).score if grades.get(a.id) and grades.get(a.id).score is not none else '' }}"
+                     placeholder="{{ scale_min_display }}–{{ scale_max_display }}">
+            </div>
+            <textarea name="feedback_{{ a.id }}" placeholder="Feedback para este aspecto…">{{ grades.get(a.id).feedback if grades.get(a.id) else '' }}</textarea>
           </div>
-          <div class="score-row">
-            <input type="number" step="0.1" min="{{ scale_min }}" max="{{ scale_max }}"
-                   name="score_{{ a.id }}" class="aspect-score" data-weight="{{ a.weight }}"
-                   value="{{ grades.get(a.id).score if grades.get(a.id) and grades.get(a.id).score is not none else '' }}"
-                   placeholder="{{ scale_min_display }}–{{ scale_max_display }}">
+          {% endfor %}
+        </div>
+
+        <div class="bottom-bar">
+          <div class="saved-note" id="saved-note"></div>
+          <button type="submit" class="btn secondary">Guardar</button>
+          {% if next_student %}
+          <button type="submit" formaction="/assignments/{{ assignment.id }}/grade?student_id={{ current.id }}&next={{ next_student.id }}" class="btn">Guardar y siguiente →</button>
+          {% endif %}
+        </div>
+      </form>
+    </div>
+
+    <div class="tab-panel" data-panel="videos" style="{{ '' if active_tab == 'videos' else 'display:none;' }}">
+      <p class="videos-hint">Puedes subir varios videos para esta tarea y este estudiante — por ejemplo, distintos intentos o ángulos de la misma entrega. Solo se aceptan archivos .mp4.</p>
+
+      {% if not r2_configured %}
+      <div class="card" style="color:var(--muted); margin-bottom:14px;">
+        El almacenamiento de video (Cloudflare R2) todavía no está configurado en este servidor — habla con quien lo administra antes de subir videos.
+      </div>
+      {% endif %}
+
+      <div class="videos-grid">
+        {% for v in videos %}
+        <div class="card video-card">
+          <video controls preload="none" src="/videos/{{ v.id }}/stream"></video>
+          <div class="video-card-body">
+            <div class="video-card-title">{{ v.label }}</div>
+            <div class="video-card-meta">{{ v.size_display }}{% if v.size_display %} · {% endif %}subido {{ v.uploaded_display }}</div>
+            <form method="post" action="/videos/{{ v.id }}/delete" onsubmit="return confirm('¿Eliminar este video? No se puede deshacer.');">
+              <button type="submit" class="btn secondary" style="width:100%;">Eliminar</button>
+            </form>
           </div>
-          <textarea name="feedback_{{ a.id }}" placeholder="Feedback para este aspecto…">{{ grades.get(a.id).feedback if grades.get(a.id) else '' }}</textarea>
         </div>
         {% endfor %}
-      </div>
 
-      <div class="bottom-bar">
-        <div class="saved-note" id="saved-note"></div>
-        <button type="submit" class="btn secondary">Guardar</button>
-        {% if next_student %}
-        <button type="submit" formaction="/assignments/{{ assignment.id }}/grade?student_id={{ current.id }}&next={{ next_student.id }}" class="btn">Guardar y siguiente →</button>
-        {% endif %}
+        <form method="post" action="/assignments/{{ assignment.id }}/videos?student_id={{ current.id }}" enctype="multipart/form-data" class="video-upload-card">
+          <div style="width:40px; height:40px; border-radius:50%; background:var(--input-bg); display:flex; align-items:center; justify-content:center; margin:0 auto;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 8l5-5 5 5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+          </div>
+          <input type="file" name="file" accept="video/mp4,.mp4" required>
+          <input type="text" name="label" placeholder="Etiqueta (ej. Intento 1)" maxlength="60">
+          <button type="submit" class="btn">Subir video</button>
+          <div class="video-upload-hint">Solo .mp4</div>
+        </form>
       </div>
-    </form>
+    </div>
+
     {% endif %}
   </div>
 </div>
@@ -90,7 +133,20 @@
     }
   }
   scoreInputs.forEach(inp => inp.addEventListener('input', recalc));
-  recalc();
+  if (finalGradeEl) recalc();
+
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.tab;
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b === btn));
+      document.querySelectorAll('.tab-panel').forEach(p => {
+        p.style.display = (p.dataset.panel === tab) ? '' : 'none';
+      });
+      document.querySelectorAll('[data-tab-extra]').forEach(el => {
+        el.style.display = (el.dataset.tabExtra === tab) ? '' : 'none';
+      });
+    });
+  });
 </script>
 
 {% endblock %}

@@ -52,6 +52,24 @@ Para poder probar cada parte antes de entregarte la siguiente (como hemos hecho 
 3. **Listado y navegación**: panel de anotaciones, clic para saltar al momento con el dibujo y la anotación destacada, marcadores de color en la línea de tiempo.
 4. **Pulido**: editar/eliminar anotaciones, manejo de varios videos por tarea+estudiante (pestañas o selector), pruebas de migración igual que las anteriores.
 
-## Siguiente paso
+## Estado actual
 
-Si el preview te acomoda, parto con la Fase 1. Si quieres ajustar algo del diseño (colores de anotación, cómo se ve la lista, dónde queda el botón de subir) o de las decisiones de arriba, lo vemos antes de programar.
+**Fase 1 (Base) — lista.** Ya puedes subir videos `.mp4` desde la pestaña
+**Videos** de Corregir (junto a **Rúbrica**) y verlos con los controles de
+tiempo normales del navegador. Detalles de esta fase:
+
+- Solo se aceptan `.mp4` — se valida tanto la extensión como el contenido
+  del archivo (para pillar, por ejemplo, un `.mkv` renombrado a mano).
+- Los archivos se guardan en tu bucket de Cloudflare R2 (variables
+  `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`,
+  `R2_BUCKET_NAME` — ver `.env.example` y `DEPLOY_RAILWAY.md`). El bucket
+  queda privado; la app genera una URL firmada de corta duración cada vez
+  que se reproduce un video, para que el navegador pueda saltar a
+  cualquier parte sin pasar por el servidor.
+- Puedes subir varios videos por tarea+estudiante (con una etiqueta como
+  "Intento 1") y eliminar los que ya no sirvan.
+- Todavía **no** hay dibujo ni anotaciones — eso es la fase 2.
+
+**Siguiente paso: Fase 2 (Dibujo y anotaciones).** Overlay de dibujo libre
+sobre el video, selector de color y grosor, y guardar una anotación
+(dibujo + nota de texto) en un momento específico del video, en segundos.

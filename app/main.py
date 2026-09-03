@@ -1,18 +1,37 @@
+import logging
 import os
+import uuid
 from datetime import datetime
 
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlmodel import Session, select
+from starlette.concurrency import run_in_threadpool
 from starlette.middleware.sessions import SessionMiddleware
-from starlette.responses import RedirectResponse
+from starlette.responses import RedirectResponse, Response
 
+from app import storage
 from app.auth import TEACHER_PASSWORD, require_login
 from app.database import engine, init_db
-from app.models import Assignment, Course, Grade, RubricAspect, Student
+from app.models import Assignment, Course, Grade, RubricAspect, Student, Video
 from app.scoring import SCALE_MAX, SCALE_MIN, band, fmt, weight_display, weighted_average, weights_sum
 from app.seed import seed_defaults, seed_rubric_for_assignment
+
+logger = logging.getLogger(__name__)
+
+_MESES_ES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
+
+
+def fmt_date_es(dt: datetime) -> str:
+    return f"{dt.day} {_MESES_ES[dt.month - 1]}"
+
+
+def fmt_size(num_bytes: int) -> str:
+    if not num_bytes:
+        return ""
+    mb = num_bytes / 1_048_576
+    return f"{mb:.0f} MB" if mb >= 1 else f"{num_bytes / 1024:.0f} KB"
 
 APP_DIR = os.path.dirname(__file__)
 
@@ -506,6 +525,25 @@ def grading_screen(assignment_id: int, request: Request):
             if idx + 1 < len(students_ctx):
                 next_student = students_ctx[idx + 1]
 
+        videos_ctx = []
+        if current:
+            videos = session.exec(
+                select(Video)
+                .where(Video.assignment_id == assignment_id, Video.student_id == current["id"])
+                .order_by(Video.uploaded_at)
+            ).all()
+            videos_ctx = [
+                {
+                    "id": v.id,
+                    "label": v.label or v.original_filename or "Video",
+                    "size_display": fmt_size(v.size_bytes),
+                    "uploaded_display": fmt_date_es(v.uploaded_at),
+                }
+                for v in videos
+            ]
+
+    active_tab = "videos" if request.query_params.get("tab") == "videos" else "rubrica"
+
     return templates.TemplateResponse(
         "grading.html",
         {
@@ -523,6 +561,9 @@ def grading_screen(assignment_id: int, request: Request):
             "scale_max_display": str(int(SCALE_MAX)),
             "course": course,
             "courses": courses,
+            "videos": videos_ctx,
+            "active_tab": active_tab,
+            "r2_configured": storage.is_configured(),
         },
     )
 
@@ -665,4 +706,129 @@ def report(assignment_id: int, request: Request):
             "scale_max_display": str(int(SCALE_MAX)),
             "today": datetime.now().strftime("%d-%m-%Y"),
         },
+    )
+
+
+# --------------------------------------------------------------- videos ----
+# Fase 1 de revisión de video: subir clips .mp4 (por estudiante + tarea) y
+# verlos con los controles de tiempo nativos del navegador. Todavía sin
+# dibujo/anotaciones (esa es la fase 2). El archivo se guarda en Cloudflare
+# R2 — acá solo queda la referencia en la base de datos.
+
+ALLOWED_VIDEO_EXTENSIONS = (".mp4",)
+
+
+def _is_valid_mp4(filename: str, header: bytes) -> bool:
+    """Sube solo .mp4: revisa la extensión Y los primeros bytes del archivo
+    (los mp4 parten con un box "ftyp" en el byte 4) — así se rechaza, por
+    ejemplo, un .mkv que alguien haya renombrado a mano a .mp4."""
+    if not filename or not filename.lower().endswith(ALLOWED_VIDEO_EXTENSIONS):
+        return False
+    return len(header) >= 8 and header[4:8] == b"ftyp"
+
+
+@app.post("/assignments/{assignment_id}/videos")
+async def video_upload(assignment_id: int, request: Request):
+    redirect = require_login(request)
+    if redirect:
+        return redirect
+
+    student_id_raw = request.query_params.get("student_id")
+    if not student_id_raw:
+        return RedirectResponse(url=f"/assignments/{assignment_id}", status_code=303)
+    student_id = int(student_id_raw)
+
+    def back(msg: str, status_code: int = 303):
+        return RedirectResponse(
+            url=f"/assignments/{assignment_id}?student_id={student_id}&tab=videos&msg={msg}",
+            status_code=status_code,
+        )
+
+    if not storage.is_configured():
+        return back("El almacenamiento de video (Cloudflare R2) no está configurado todavía en este servidor.")
+
+    form = await request.form()
+    upload = form.get("file")
+    label = (form.get("label") or "").strip()
+
+    if upload is None or not getattr(upload, "filename", ""):
+        return back("Elige un archivo de video.")
+
+    header = await upload.read(12)
+    await upload.seek(0)
+
+    if not _is_valid_mp4(upload.filename, header):
+        return back("Solo se aceptan videos en formato .mp4 (ese archivo no parece ser un mp4 válido).")
+
+    with Session(engine) as session:
+        assignment = session.get(Assignment, assignment_id)
+        student = session.get(Student, student_id)
+        if not assignment or not student:
+            return RedirectResponse(url="/?msg=Esa tarea o estudiante no existe.", status_code=303)
+
+        # Tamaño del archivo sin leerlo completo a memoria: se saca del
+        # spooled temp file que ya arma Starlette al recibir el multipart.
+        upload.file.seek(0, 2)
+        size_bytes = upload.file.tell()
+        upload.file.seek(0)
+
+        key = f"videos/{assignment_id}/{student_id}/{uuid.uuid4().hex}.mp4"
+        try:
+            await run_in_threadpool(storage.upload_fileobj, upload.file, key, "video/mp4")
+        except Exception:
+            logger.exception("Error subiendo video a R2 (assignment=%s student=%s)", assignment_id, student_id)
+            return back("No se pudo subir el video (revisa la conexión o las credenciales de R2 e intenta de nuevo).")
+
+        video = Video(
+            assignment_id=assignment_id,
+            student_id=student_id,
+            label=label or upload.filename,
+            object_key=key,
+            original_filename=upload.filename,
+            size_bytes=size_bytes,
+        )
+        session.add(video)
+        session.commit()
+
+    return back("Video subido.")
+
+
+@app.get("/videos/{video_id}/stream")
+def video_stream(video_id: int, request: Request):
+    redirect = require_login(request)
+    if redirect:
+        return redirect
+
+    with Session(engine) as session:
+        video = session.get(Video, video_id)
+
+    if not video:
+        return Response(status_code=404)
+    if not storage.is_configured():
+        return Response(status_code=503)
+
+    url = storage.presigned_get_url(video.object_key)
+    return RedirectResponse(url=url, status_code=307)
+
+
+@app.post("/videos/{video_id}/delete")
+def video_delete(video_id: int, request: Request):
+    redirect = require_login(request)
+    if redirect:
+        return redirect
+
+    with Session(engine) as session:
+        video = session.get(Video, video_id)
+        if not video:
+            return RedirectResponse(url="/", status_code=303)
+        assignment_id, student_id, key = video.assignment_id, video.student_id, video.object_key
+        session.delete(video)
+        session.commit()
+
+    if storage.is_configured():
+        storage.delete_object(key)
+
+    return RedirectResponse(
+        url=f"/assignments/{assignment_id}?student_id={student_id}&tab=videos&msg=Video eliminado.",
+        status_code=303,
     )

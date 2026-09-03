@@ -53,3 +53,26 @@ class Grade(SQLModel, table=True):
     aspect_id: int = Field(foreign_key="rubricaspect.id", index=True)
     score: Optional[float] = None  # escala 1.0 - 7.0
     feedback: str = ""
+
+
+class Video(SQLModel, table=True):
+    """Un video (siempre .mp4) subido para UN estudiante en UNA tarea.
+
+    Pueden existir varios videos para el mismo par tarea+estudiante (ej.
+    distintos intentos). El archivo en sí vive en Cloudflare R2 — acá solo
+    se guarda la referencia (object_key) y algunos metadatos para mostrar
+    en la lista, no el archivo.
+
+    Es una tabla nueva (no una migración de columnas de una tabla vieja),
+    así que basta con que `init_db()` la cree vía metadata.create_all(); no
+    necesita su propia función de migración como course_id/assignment_id.
+    """
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    assignment_id: int = Field(foreign_key="assignment.id", index=True)
+    student_id: int = Field(foreign_key="student.id", index=True)
+    label: str = ""
+    object_key: str
+    original_filename: str = ""
+    size_bytes: int = 0
+    uploaded_at: datetime = Field(default_factory=datetime.utcnow)
