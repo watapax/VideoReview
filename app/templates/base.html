@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Corrección · Animación{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="app-sidebar">
+      <div class="brand-row">
+        <div class="brand-mark">CA</div>
+        <div class="brand-name">Corrección</div>
+      </div>
+
+      {% if courses is defined and courses|length > 0 %}
+      <form method="get" action="/courses/switch" class="course-switcher">
+        <label>Curso</label>
+        <select name="course_id" onchange="this.form.submit()">
+          {% for c in courses %}
+          <option value="{{ c.id }}" {{ 'selected' if course and c.id == course.id else '' }}>{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </form>
+      {% endif %}
+
+      <nav class="side-nav">
+        <div class="side-nav-label">Corregir</div>
+        <a href="/" class="{{ 'active' if active == 'dashboard' else '' }}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+          Tareas
+        </a>
+        <a href="/students" class="{{ 'active' if active == 'students' else '' }}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.2"/><path d="M5 20c1.2-4 4-6 7-6s5.8 2 7 6"/></svg>
+          Estudiantes
+        </a>
+        <div class="side-nav-label">Configuración</div>
+        <a href="/courses" class="{{ 'active' if active == 'courses' else '' }}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/></svg>
+          Cursos
+        </a>
+      </nav>
+
+      <a class="logout" href="/logout">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/></svg>
+        Cerrar sesión
+      </a>
+    </aside>
+
+    <main class="app-main">
+      <div class="page{% block page_wide %}{% endblock %}">
+        {% if request.query_params.get('msg') %}
+          <div class="flash">{{ request.query_params.get('msg') }}</div>
+        {% endif %}
+        {% block content %}{% endblock %}
+      </div>
+    </main>
+  </div>
+</body>
+</html>

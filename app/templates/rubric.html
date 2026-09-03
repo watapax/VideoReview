@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Rúbrica · {{ assignment.name }}{% endblock %}
+{% block content %}
+
+<a href="/assignments/{{ assignment.id }}" style="font-size:12.5px; color:var(--muted); display:inline-block; margin-bottom:8px;">← Volver a corregir</a>
+<h1 style="font-size:20px;">Rúbrica — {{ assignment.name }}</h1>
+<p style="color:var(--muted); font-size:13px; max-width:640px;">
+  Estos son los aspectos que se evalúan en esta tarea y su ponderación. Deben sumar 100%.
+  Son propios de esta tarea: puedes usar aspectos distintos en cada tarea del curso.
+  Si un aspecto ya tiene notas guardadas, no se puede eliminar (puedes cambiarle el
+  nombre o dejarlo en 0%).
+</p>
+
+{% if error %}<div class="flash" style="border-color:#e88a6a;">{{ error }}</div>{% endif %}
+
+<div class="card">
+  <form method="post" action="/assignments/{{ assignment.id }}/rubric" id="rubric-form">
+    <table id="rubric-table">
+      <thead>
+        <tr><th style="width:50%;">Aspecto</th><th>Ponderación (%)</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for a in aspects %}
+        <tr>
+          <td>
+            <input type="hidden" name="aspect_id" value="{{ a.id }}">
+            <input type="text" name="aspect_name" value="{{ a.name }}" required>
+          </td>
+          <td style="width:140px;">
+            <input type="number" name="aspect_weight" value="{{ a.weight }}" step="0.5" min="0" max="100" required>
+          </td>
+          <td style="width:80px;">
+            <button type="button" class="btn danger row-remove" title="Quitar de la lista">Quitar</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div style="margin:14px 0;">
+      <button type="button" class="btn secondary" id="add-row">+ Agregar aspecto</button>
+      <span id="weight-total" style="margin-left:14px; font-size:13px; color:var(--muted);"></span>
+    </div>
+
+    <button class="btn" type="submit">Guardar rúbrica</button>
+  </form>
+</div>
+
+<template id="row-template">
+  <tr>
+    <td>
+      <input type="hidden" name="aspect_id" value="new">
+      <input type="text" name="aspect_name" placeholder="Nombre del aspecto" required>
+    </td>
+    <td style="width:140px;">
+      <input type="number" name="aspect_weight" value="0" step="0.5" min="0" max="100" required>
+    </td>
+    <td style="width:80px;">
+      <button type="button" class="btn danger row-remove">Quitar</button>
+    </td>
+  </tr>
+</template>
+
+<script>
+  const table = document.getElementById('rubric-table').querySelector('tbody');
+  const tmpl = document.getElementById('row-template');
+  const totalEl = document.getElementById('weight-total');
+
+  function updateTotal() {
+    let total = 0;
+    table.querySelectorAll('input[name=aspect_weight]').forEach(i => total += parseFloat(i.value || '0'));
+    totalEl.textContent = 'Suma actual: ' + total.toFixed(1).replace('.', ',') + '%';
+    totalEl.style.color = Math.abs(total - 100) < 0.05 ? 'var(--accent)' : '#e88a6a';
+  }
+
+  document.getElementById('add-row').addEventListener('click', () => {
+    const node = tmpl.content.cloneNode(true);
+    table.appendChild(node);
+    updateTotal();
+  });
+
+  table.addEventListener('click', (e) => {
+    if (e.target.classList.contains('row-remove')) {
+      e.target.closest('tr').remove();
+      updateTotal();
+    }
+  });
+
+  table.addEventListener('input', updateTotal);
+  updateTotal();
+</script>
+
+{% endblock %}

@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Nueva tarea{% endblock %}
+{% block content %}
+
+<h1 style="font-size:20px;">Nueva tarea</h1>
+
+<div class="card" style="max-width:480px;">
+  <form method="post" action="/assignments/new">
+    <div class="field">
+      <label for="name">Nombre de la tarea</label>
+      <input type="text" id="name" name="name" placeholder="Ej: Tarea 3 — Ciclo de caminata" required autofocus>
+    </div>
+    <button class="btn" type="submit">Crear tarea</button>
+    <a class="btn secondary" href="/">Cancelar</a>
+  </form>
+</div>
+
+{% endblock %}

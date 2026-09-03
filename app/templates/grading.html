@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}{{ assignment.name }} · Corregir{% endblock %}
+{% block page_wide %} wide{% endblock %}
+{% block content %}
+
+<div class="grading-layout">
+  <div class="sidebar">
+    <div class="search" style="display:flex; align-items:center; justify-content:space-between;">
+      <strong style="font-size:13px;">{{ assignment.name }}</strong>
+    </div>
+    <div class="search" style="padding-top:0; font-size:12px; color:var(--muted-2);">
+      {{ graded_count }} / {{ students|length }} calificados ·
+      <a href="/assignments/{{ assignment.id }}/report" target="_blank">ver informe</a> ·
+      <a href="/assignments/{{ assignment.id }}/rubric">editar rúbrica</a>
+    </div>
+    {% for s in students %}
+      <a href="/assignments/{{ assignment.id }}?student_id={{ s.id }}" class="student-row {{ 'current' if s.id == current.id else '' }}">
+        <div class="avatar">{{ s.initials }}</div>
+        <div style="flex-grow:1; min-width:0;">
+          <div style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ s.name }}</div>
+          <div class="status-label">{{ s.status }}</div>
+        </div>
+      </a>
+    {% endfor %}
+  </div>
+
+  <div class="grading-main">
+    {% if not current %}
+      <div class="card" style="text-align:center; color:var(--muted);">
+        No hay estudiantes activos todavía. <a href="/students">Agrega estudiantes →</a>
+      </div>
+    {% else %}
+    <form method="post" action="/assignments/{{ assignment.id }}/grade?student_id={{ current.id }}" id="grade-form">
+      <div class="grading-header">
+        <div>
+          <div style="font-size:20px; font-weight:600; font-family:'Space Grotesk',sans-serif;">{{ current.name }}</div>
+        </div>
+        <div class="final-grade">
+          <div class="label">Nota final</div>
+          <div class="num" id="final-grade">—</div>
+        </div>
+      </div>
+
+      <div class="aspects-grid">
+        {% for a in aspects %}
+        <div class="card aspect-card">
+          <div class="aspect-head">
+            <div class="aspect-name">{{ a.name }}</div>
+            <div class="weight">{{ a.weight_display }}%</div>
+          </div>
+          <div class="score-row">
+            <input type="number" step="0.1" min="{{ scale_min }}" max="{{ scale_max }}"
+                   name="score_{{ a.id }}" class="aspect-score" data-weight="{{ a.weight }}"
+                   value="{{ grades.get(a.id).score if grades.get(a.id) and grades.get(a.id).score is not none else '' }}"
+                   placeholder="{{ scale_min_display }}–{{ scale_max_display }}">
+          </div>
+          <textarea name="feedback_{{ a.id }}" placeholder="Feedback para este aspecto…">{{ grades.get(a.id).feedback if grades.get(a.id) else '' }}</textarea>
+        </div>
+        {% endfor %}
+      </div>
+
+      <div class="bottom-bar">
+        <div class="saved-note" id="saved-note"></div>
+        <button type="submit" class="btn secondary">Guardar</button>
+        {% if next_student %}
+        <button type="submit" formaction="/assignments/{{ assignment.id }}/grade?student_id={{ current.id }}&next={{ next_student.id }}" class="btn">Guardar y siguiente →</button>
+        {% endif %}
+      </div>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+  const scoreInputs = document.querySelectorAll('.aspect-score');
+  const finalGradeEl = document.getElementById('final-grade');
+
+  function recalc() {
+    let weightedSum = 0, totalWeight = 0, missing = false;
+    scoreInputs.forEach(inp => {
+      const weight = parseFloat(inp.dataset.weight || '0');
+      totalWeight += weight;
+      if (inp.value === '') { missing = true; return; }
+      weightedSum += parseFloat(inp.value) * weight;
+    });
+    if (missing || totalWeight === 0) {
+      finalGradeEl.textContent = '—';
+    } else {
+      finalGradeEl.textContent = (weightedSum / totalWeight).toFixed(1).replace('.', ',');
+    }
+  }
+  scoreInputs.forEach(inp => inp.addEventListener('input', recalc));
+  recalc();
+</script>
+
+{% endblock %}

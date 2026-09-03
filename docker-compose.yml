@@ -1,0 +1,12 @@
+services:
+  correccion:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - TEACHER_PASSWORD=${TEACHER_PASSWORD:-changeme}
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-change-me}
+      - DATA_DIR=/app/data
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

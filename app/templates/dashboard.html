@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Tareas · Corrección de Animación{% endblock %}
+{% block content %}
+
+<div style="display:flex; align-items:center; margin-bottom:18px;">
+  <h1 style="margin:0; font-size:20px;">Tareas</h1>
+  <div style="flex-grow:1;"></div>
+  <a class="btn" href="/assignments/new">+ Nueva tarea</a>
+</div>
+
+{% if not assignments %}
+  <div class="card" style="text-align:center; color:var(--muted);">
+    Todavía no tienes tareas creadas. <a href="/assignments/new">Crea la primera</a>.
+  </div>
+{% else %}
+  <div class="card" style="padding:0;">
+    <table>
+      <thead>
+        <tr><th>Tarea</th><th>Progreso</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for row in assignments %}
+        <tr>
+          <td>
+            {{ row.assignment.name }}
+            {% if not row.aspects_ok %}
+              <div style="margin-top:4px;">
+                <span class="pill" style="color:#e88a6a; border-color:#e88a6a;">Rúbrica incompleta (debe sumar 100%)</span>
+              </div>
+            {% endif %}
+          </td>
+          <td>
+            <div class="progress-pill">
+              <div class="progress-track"><div class="progress-fill" style="width:{{ row.pct }}%;"></div></div>
+              <span>{{ row.graded }} / {{ row.total }} calificados</span>
+            </div>
+          </td>
+          <td style="text-align:right;">
+            <a class="btn secondary" href="/assignments/{{ row.assignment.id }}/rubric">Rúbrica</a>
+            <a class="btn secondary" href="/assignments/{{ row.assignment.id }}">Corregir</a>
+            <a class="btn secondary" href="/assignments/{{ row.assignment.id }}/report" target="_blank">Ver informe</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endif %}
+
+{% endblock %}

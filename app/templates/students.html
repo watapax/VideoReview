@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Estudiantes{% endblock %}
+{% block content %}
+
+<div style="display:flex; align-items:center; margin-bottom:18px;">
+  <h1 style="margin:0; font-size:20px;">Estudiantes</h1>
+</div>
+
+<div class="row" style="align-items:flex-start;">
+  <div class="card">
+    <h3 style="margin-top:0; font-size:14px;">Agregar estudiante</h3>
+    <form method="post" action="/students/add">
+      <div class="field">
+        <label for="name">Nombre</label>
+        <input type="text" id="name" name="name" placeholder="Nombre completo" required autofocus>
+      </div>
+      <button class="btn" type="submit">Agregar</button>
+    </form>
+    <h3 style="font-size:14px;">Agregar varios a la vez</h3>
+    <form method="post" action="/students/bulk_add">
+      <div class="field">
+        <label for="names">Un nombre por línea</label>
+        <textarea id="names" name="names" rows="6" placeholder="Valentina Rojas&#10;Martín Soto&#10;..."></textarea>
+      </div>
+      <button class="btn secondary" type="submit">Agregar lista</button>
+    </form>
+  </div>
+
+  <div class="card" style="padding:0; flex:2;">
+    <table>
+      <thead><tr><th>Nombre</th><th>Estado</th><th></th></tr></thead>
+      <tbody>
+        {% for s in students %}
+        <tr>
+          <td>{{ s.name }}</td>
+          <td>
+            {% if s.active %}<span class="pill ok">Activo</span>{% else %}<span class="pill pending">Inactivo</span>{% endif %}
+          </td>
+          <td style="text-align:right;">
+            <form method="post" action="/students/{{ s.id }}/toggle" style="display:inline;">
+              <button class="btn secondary" type="submit">{{ 'Desactivar' if s.active else 'Activar' }}</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3" style="color:var(--muted); text-align:center;">Aún no hay estudiantes.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}

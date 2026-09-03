@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Cursos{% endblock %}
+{% block content %}
+
+<h1 style="margin:0 0 18px; font-size:20px;">Cursos</h1>
+
+{% if request.query_params.get('msg') %}
+  <div class="flash" style="border-color:var(--danger);">{{ request.query_params.get('msg') }}</div>
+{% endif %}
+
+<div class="row" style="align-items:flex-start;">
+  <div class="card" style="max-width:340px;">
+    <h3 style="margin-top:0; font-size:14px;">Nuevo curso</h3>
+    <form method="post" action="/courses/new">
+      <div class="field">
+        <label for="name">Nombre</label>
+        <input type="text" id="name" name="name" placeholder="Ej: Animación 2D - Sección 2" required autofocus>
+      </div>
+      <button class="btn" type="submit">Crear curso</button>
+    </form>
+    <p style="font-size:12px; color:var(--muted); margin-top:14px;">
+      Al crear una tarea en este curso, defines la rúbrica de esa tarea (cada tarea tiene la suya).
+    </p>
+  </div>
+
+  <div class="card" style="padding:0; flex:2;">
+    {% for row in rows %}
+    <form method="post" action="/courses/{{ row.course.id }}/rename" class="course-row">
+      <input type="text" name="name" value="{{ row.course.name }}" class="course-name-input">
+      <span class="course-meta">{{ row.n_students }} estudiantes · {{ row.n_assignments }} tareas</span>
+      {% if row.course.id == course.id %}<span class="pill ok">actual</span>{% endif %}
+      {% if row.course.active %}<span class="pill ok">Activo</span>{% else %}<span class="pill pending">Inactivo</span>{% endif %}
+      <div class="course-row-actions">
+        <button type="submit" class="btn secondary">Guardar nombre</button>
+        <button type="submit" formaction="/courses/{{ row.course.id }}/toggle" class="btn secondary">{{ 'Desactivar' if row.course.active else 'Activar' }}</button>
+      </div>
+    </form>
+    {% endfor %}
+  </div>
+</div>
+
+{% endblock %}

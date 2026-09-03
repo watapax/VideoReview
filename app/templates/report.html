@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Informe · {{ assignment.name }}</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'IBM Plex Sans', system-ui, sans-serif; background: #f6f1e7; color: #2b2620; }
+    .sheet { width: 794px; max-width: 100%; margin: 0 auto; padding: 56px 60px 80px; }
+    .print-bar { position: sticky; top: 0; background: #2b2620; color: #f6f1e7; padding: 10px 24px; display: flex; justify-content: flex-end; }
+    .print-bar button { background: #c1682f; color: #2b2620; border: none; border-radius: 6px; padding: 8px 16px; font-weight: 600; font-family: inherit; cursor: pointer; }
+    header.doc { border-bottom: 2px solid #2b2620; padding-bottom: 18px; margin-bottom: 26px; }
+    .eyebrow { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #8a7e68; }
+    h1.doc-title { font-family: 'Space Grotesk', sans-serif; font-size: 27px; font-weight: 700; margin: 4px 0 0; }
+    .doc-sub { font-size: 13px; color: #5c5342; margin-top: 6px; }
+    .intro { font-size: 13px; line-height: 1.6; color: #4a4436; background: #efe6d2; border: 1px solid #ddd0ae; border-radius: 8px; padding: 14px 18px; margin-bottom: 32px; }
+    .section-title { font-family: 'Space Grotesk', sans-serif; font-size: 14px; font-weight: 600; margin-bottom: 12px; display: flex; align-items: baseline; gap: 8px; }
+    .section-title .hint { font-size: 11px; font-weight: 400; color: #8a7e68; }
+    .summary-row { display: flex; align-items: center; gap: 14px; padding: 9px 0; border-bottom: 1px solid #ddd0ae; }
+    .summary-row .name { width: 170px; font-size: 13px; font-weight: 500; }
+    .bar-track { flex-grow: 1; height: 9px; border-radius: 4px; background: #e4d8bb; overflow: hidden; }
+    .bar-fill { height: 100%; background: #c1682f; }
+    .summary-row .grade { width: 34px; text-align: right; font-family: 'Space Grotesk', sans-serif; font-size: 14px; font-weight: 700; }
+    .aspect-section { margin-bottom: 34px; }
+    .aspect-header { display: flex; align-items: center; gap: 10px; background: #2b2620; color: #f6f1e7; border-radius: 6px; padding: 9px 14px; margin-bottom: 4px; }
+    .aspect-header .name { font-family: 'Space Grotesk', sans-serif; font-size: 14px; font-weight: 600; }
+    .aspect-header .weight { font-size: 11px; color: #c9bfa8; margin-left: auto; }
+    .fb-row { padding: 16px 4px 14px; border-bottom: 1px solid #ddd0ae; }
+    .fb-row .fb-head { display: flex; align-items: center; gap: 10px; margin-bottom: 7px; }
+    .fb-row .fb-name { font-size: 13px; font-weight: 600; }
+    .chip { font-family: 'Space Grotesk', sans-serif; font-size: 12px; font-weight: 700; color: #2b2620; border-radius: 4px; padding: 1px 8px; }
+    .chip.ok { background: #bfe3cf; }
+    .chip.warn { background: #f0e0a8; }
+    .chip.bad { background: #f0c3ae; }
+    .chip.pending { background: #e4d8bb; color: #5c5342; }
+    .fb-text { font-size: 12.5px; line-height: 1.65; color: #4a4436; max-width: 660px; }
+    .footer-note { text-align: center; font-size: 11px; color: #8a7e68; margin-top: 20px; }
+    @media print {
+      * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        color-adjust: exact !important;
+      }
+      .print-bar { display: none; }
+      .sheet { padding: 0; width: auto; }
+      body { background: #fff; }
+    }
+  </style>
+</head>
+<body>
+  <div class="print-bar"><button onclick="window.print()">Exportar / Imprimir</button></div>
+  <div class="sheet">
+    <header class="doc">
+      <div class="eyebrow">Escuela de Animación</div>
+      <h1 class="doc-title">{{ assignment.name }}</h1>
+      <div class="doc-sub">Retroalimentación de curso · {{ today }}</div>
+    </header>
+
+    <div class="intro">
+      Este informe reúne la corrección de <strong>todo el curso</strong>, organizada por aspecto evaluado.
+      La idea es que revises no solo tu propio resultado, sino también el feedback que recibieron tus
+      compañeras y compañeros en cada aspecto — así aprendemos entre todos de los mismos errores y aciertos.
+    </div>
+
+    <div style="margin-bottom:36px;">
+      <div class="section-title">Resumen de notas finales <span class="hint">(escala {{ scale_min_display }} – {{ scale_max_display }})</span></div>
+      <div style="border-top:1px solid #ddd0ae;">
+        {% for s in summary %}
+        <div class="summary-row">
+          <div class="name">{{ s.name }}</div>
+          <div class="bar-track"><div class="bar-fill" style="width:{{ s.pct }}%;"></div></div>
+          <div class="grade">{{ s.grade_display }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    {% for a in aspects %}
+    <div class="aspect-section">
+      <div class="aspect-header">
+        <div class="name">{{ a.name }}</div>
+        <div class="weight">ponderación {{ a.weight_display }}%</div>
+      </div>
+      {% for r in a.rows %}
+      <div class="fb-row">
+        <div class="fb-head">
+          <div class="fb-name">{{ r.name }}</div>
+          <div class="chip {{ r.band }}">{{ r.score_display }}</div>
+        </div>
+        <div class="fb-text">{{ r.feedback or 'Sin feedback registrado.' }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+
+    <div class="footer-note">— fin del informe · generado a partir de la rúbrica de {{ aspects|length }} aspectos —</div>
+  </div>
+</body>
+</html>
