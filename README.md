@@ -73,14 +73,17 @@ contenedor.
   quieras comentar, dibuja libremente encima (color y grosor a elección) y
   escribe una nota — queda guardado en ese segundo exacto del video. La
   lista de anotaciones de la derecha las muestra todas y permite
-  eliminarlas.
+  eliminarlas. Debajo del video hay una línea de tiempo propia con un
+  marcador en forma de rombo por cada anotación (del color de esa
+  anotación) — al hacer clic en un marcador o en una anotación de la lista,
+  el video salta directo a ese momento, vuelve a mostrar el dibujo guardado
+  encima, y la anotación queda resaltada tanto en la lista como en la línea
+  de tiempo.
 
 ## Qué falta (fases siguientes)
 
-- Hacer clic en una anotación de la lista para saltar el video a ese
-  momento con el dibujo mostrado encima y la anotación resaltada, y
-  marcadores de color en la línea de tiempo del video — es la fase 3 de la
-  revisión de video, todavía no empezada (ver `plan-revision-video.md`).
+- Editar anotaciones ya guardadas (por ahora solo se pueden crear y
+  eliminar), y manejo más pulido de varios videos por tarea+estudiante.
 - Exportación a PDF "de verdad" (por ahora es imprimir la página del
   informe desde el navegador, que ya se ve bien pero no es un PDF generado
   por el backend).

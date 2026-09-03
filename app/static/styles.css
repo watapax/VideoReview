@@ -357,6 +357,40 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 .review-actions { display: flex; align-items: center; gap: 8px; margin-top: 14px; flex-shrink: 0; }
 .review-actions-creating { display: flex; gap: 8px; }
 
+/* Línea de tiempo con marcadores de anotaciones (fase 3). Es una barra
+   propia debajo del video (no la barra nativa de <video controls>, que no
+   se puede decorar) — el relleno y la cabeza de reproducción se mueven con
+   'timeupdate', y cada anotación se dibuja como un rombo (cuadrado rotado
+   45°) en su posición proporcional, con el color de esa anotación. */
+.annotation-timeline {
+  position: relative; height: 20px; margin-top: 10px; flex-shrink: 0;
+  cursor: pointer;
+}
+.annotation-timeline::before {
+  content: ""; position: absolute; top: 50%; left: 0; right: 0; height: 4px;
+  transform: translateY(-50%); background: var(--card); border-radius: 3px;
+}
+.annotation-timeline-fill {
+  position: absolute; top: 50%; left: 0; height: 4px; width: 0;
+  transform: translateY(-50%); background: var(--accent-soft); border-radius: 3px;
+  pointer-events: none;
+}
+.annotation-timeline-playhead {
+  position: absolute; top: 50%; left: 0; width: 10px; height: 10px;
+  transform: translate(-50%, -50%); border-radius: 50%;
+  background: var(--text); box-shadow: 0 0 0 2px var(--panel); pointer-events: none;
+}
+.annotation-timeline-marker {
+  position: absolute; top: 50%; width: 9px; height: 9px;
+  transform: translate(-50%, -50%) rotate(45deg); border-radius: 2px;
+  border: 1.5px solid var(--panel); cursor: pointer; z-index: 1;
+}
+.annotation-timeline-marker:hover { transform: translate(-50%, -50%) rotate(45deg) scale(1.25); }
+.annotation-timeline-marker.active {
+  transform: translate(-50%, -50%) rotate(45deg) scale(1.35);
+  box-shadow: 0 0 0 2px var(--text);
+}
+
 .annotations-panel {
   width: 320px; flex-shrink: 0; border-left: 1px solid var(--border);
   background: var(--panel-2); display: flex; flex-direction: column; min-height: 0;
@@ -371,7 +405,13 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 
 .annotations-list { overflow-y: auto; flex: 1; }
 .annotations-empty { padding: 20px 16px; font-size: 12.5px; color: var(--muted-2); line-height: 1.5; }
-.annotation-row { display: flex; gap: 10px; align-items: flex-start; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+.annotation-row {
+  display: flex; gap: 10px; align-items: flex-start; padding: 12px 16px;
+  border-bottom: 1px solid var(--border); border-left: 3px solid transparent;
+  cursor: pointer;
+}
+.annotation-row:hover { background: rgba(255,255,255,0.03); }
+.annotation-row.active { background: var(--accent-soft); border-left-color: var(--accent); }
 .annotation-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
 .annotation-row-body { min-width: 0; flex: 1; }
 .annotation-time { font-size: 11.5px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; margin-bottom: 3px; }

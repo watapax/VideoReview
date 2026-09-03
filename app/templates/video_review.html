@@ -43,6 +43,11 @@
         </div>
       </div>
 
+      <div class="annotation-timeline" id="annotation-timeline">
+        <div class="annotation-timeline-fill" id="timeline-fill"></div>
+        <div class="annotation-timeline-playhead" id="timeline-playhead"></div>
+      </div>
+
       <div class="review-actions">
         <button type="button" class="btn" id="new-annotation-btn">+ Nueva anotación</button>
         <div id="creating-actions" class="review-actions-creating" hidden>
@@ -71,13 +76,13 @@
 
       <div class="annotations-list">
         {% for a in annotations %}
-        <div class="annotation-row">
+        <div class="annotation-row" data-id="{{ a.id }}">
           <div class="annotation-dot" style="background:{{ a.color }};"></div>
           <div class="annotation-row-body">
             <div class="annotation-time">{{ a.time_display }}</div>
             {% if a.note %}<div class="annotation-note">{{ a.note }}</div>{% endif %}
           </div>
-          <form method="post" action="/annotations/{{ a.id }}/delete" onsubmit="return confirm('¿Eliminar esta anotación?');">
+          <form method="post" action="/annotations/{{ a.id }}/delete" class="annotation-delete-form" onsubmit="return confirm('¿Eliminar esta anotación?');">
             <button type="submit" class="icon-btn" title="Eliminar anotación">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
             </button>
@@ -91,6 +96,7 @@
   </div>
 </div>
 
+<script type="application/json" id="annotations-data">{{ annotations_json|safe }}</script>
 <script>
 (function () {
   const video = document.getElementById('review-video');
@@ -112,12 +118,29 @@
   const fieldWidth = document.getElementById('field-stroke-width');
   const fieldDrawing = document.getElementById('field-drawing-data');
   const noteInput = form.querySelector('textarea[name="note"]');
+  const timeline = document.getElementById('annotation-timeline');
+  const timelineFill = document.getElementById('timeline-fill');
+  const timelinePlayhead = document.getElementById('timeline-playhead');
+
+  // Datos completos de cada anotación (tiempo, color, trazos) para poder
+  // redibujarlas sin pedirle nada más al servidor, y el id (si viene) de la
+  // anotación recién guardada para saltar a ella apenas carga la página —
+  // así el dibujo que se hizo antes de guardar no "desaparece": no se había
+  // perdido, solo no se volvía a mostrar.
+  const ANNOTATIONS = JSON.parse(document.getElementById('annotations-data').textContent || '[]');
+  const HIGHLIGHT_ID = {{ highlight_id or 'null' }};
 
   let creating = false;
   let strokes = [];
   let currentStroke = null;
   let selectedColor = fieldColor.value;
   let selectedWidth = parseFloat(fieldWidth.value);
+  let shownAnnotationId = null;
+  // true justo mientras showAnnotation() mueve el video por código, para que
+  // el listener de 'seeked' no confunda ese salto programático con que el
+  // usuario arrastró la línea de tiempo a mano (lo que sí debe limpiar la
+  // anotación mostrada).
+  let suppressSeekClear = false;
 
   function fmtTime(s) {
     s = Math.max(0, s || 0);
@@ -133,13 +156,14 @@
     redraw();
   }
 
-  function redraw() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    const all = currentStroke ? strokes.concat([currentStroke]) : strokes;
-    all.forEach(stroke => {
-      if (stroke.points.length < 1) return;
-      ctx.strokeStyle = stroke.color;
-      ctx.lineWidth = stroke.width;
+  // Dibuja un arreglo de trazos {points, color, width} sobre el canvas.
+  // Sirve tanto para el trazo en vivo (creando una anotación nueva) como
+  // para redibujar el trazo ya guardado de una anotación existente.
+  function drawStrokesArray(strokeList) {
+    strokeList.forEach(stroke => {
+      if (!stroke.points || stroke.points.length < 1) return;
+      ctx.strokeStyle = stroke.color || '#5b7cfa';
+      ctx.lineWidth = stroke.width || 4;
       ctx.lineJoin = 'round';
       ctx.lineCap = 'round';
       ctx.beginPath();
@@ -150,6 +174,110 @@
       ctx.stroke();
     });
   }
+
+  function redraw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (creating) {
+      const all = currentStroke ? strokes.concat([currentStroke]) : strokes;
+      drawStrokesArray(all);
+    } else if (shownAnnotationId != null) {
+      const ann = ANNOTATIONS.find(a => a.id === shownAnnotationId);
+      if (ann) {
+        try {
+          const data = JSON.parse(ann.drawing_data || '{}');
+          drawStrokesArray(data.strokes || []);
+        } catch (e) {
+          // dibujo vacío o inválido: no hay nada que mostrar
+        }
+      }
+    }
+  }
+
+  function highlightRow(id) {
+    document.querySelectorAll('.annotation-row').forEach(row => {
+      row.classList.toggle('active', id != null && String(row.dataset.id) === String(id));
+    });
+    document.querySelectorAll('.annotation-timeline-marker').forEach(m => {
+      m.classList.toggle('active', id != null && String(m.dataset.id) === String(id));
+    });
+  }
+
+  // Salta el video al momento de la anotación `id` y vuelve a dibujar su
+  // trazo guardado encima — esto es lo que resuelve la sensación de que "se
+  // borró el dibujo al guardar": el dibujo siempre quedó guardado, solo que
+  // antes no había forma de volver a verlo.
+  function showAnnotation(id) {
+    const ann = ANNOTATIONS.find(a => a.id === id);
+    if (!ann) return;
+    if (creating) exitCreating();
+    shownAnnotationId = id;
+    highlightRow(id);
+    // Si el video ya está exactamente en ese segundo, cambiar currentTime no
+    // dispara 'seeked' — no hay que esperar (ni suprimir) ese evento.
+    suppressSeekClear = Math.abs(video.currentTime - ann.time_seconds) > 0.01;
+    video.currentTime = ann.time_seconds;
+    redraw();
+    const row = document.querySelector('.annotation-row[data-id="' + id + '"]');
+    if (row) row.scrollIntoView({ block: 'nearest' });
+  }
+
+  function clearAnnotationView() {
+    if (shownAnnotationId == null) return;
+    shownAnnotationId = null;
+    highlightRow(null);
+    redraw();
+  }
+
+  function buildTimelineMarkers() {
+    if (!video.duration || !isFinite(video.duration)) return;
+    timeline.querySelectorAll('.annotation-timeline-marker').forEach(m => m.remove());
+    ANNOTATIONS.forEach(ann => {
+      const pct = Math.min(100, Math.max(0, (ann.time_seconds / video.duration) * 100));
+      const marker = document.createElement('div');
+      marker.className = 'annotation-timeline-marker';
+      marker.dataset.id = ann.id;
+      marker.style.left = pct + '%';
+      marker.style.background = ann.color;
+      marker.title = fmtTime(ann.time_seconds);
+      marker.addEventListener('click', e => {
+        e.stopPropagation();
+        showAnnotation(ann.id);
+      });
+      timeline.appendChild(marker);
+    });
+    highlightRow(shownAnnotationId);
+  }
+
+  function updatePlayhead() {
+    if (!video.duration || !isFinite(video.duration)) return;
+    const pct = Math.min(100, Math.max(0, (video.currentTime / video.duration) * 100));
+    timelineFill.style.width = pct + '%';
+    timelinePlayhead.style.left = pct + '%';
+  }
+
+  timeline.addEventListener('click', e => {
+    if (e.target.classList.contains('annotation-timeline-marker')) return;
+    if (!video.duration || !isFinite(video.duration)) return;
+    const rect = timeline.getBoundingClientRect();
+    const pct = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+    video.currentTime = pct * video.duration;
+  });
+
+  video.addEventListener('timeupdate', updatePlayhead);
+  video.addEventListener('seeked', () => {
+    if (suppressSeekClear) { suppressSeekClear = false; return; }
+    clearAnnotationView();
+  });
+  video.addEventListener('play', clearAnnotationView);
+
+  document.querySelectorAll('.annotation-row').forEach(row => {
+    row.addEventListener('click', () => {
+      showAnnotation(parseInt(row.dataset.id, 10));
+    });
+  });
+  document.querySelectorAll('.annotation-delete-form').forEach(f => {
+    f.addEventListener('click', e => e.stopPropagation());
+  });
 
   function pointFromEvent(e) {
     const rect = canvas.getBoundingClientRect();
@@ -200,6 +328,7 @@
   });
 
   function enterCreating() {
+    clearAnnotationView();
     video.pause();
     creating = true;
     strokes = [];
@@ -239,12 +368,20 @@
       alert('Dibuja algo o escribe una nota antes de guardar.');
       return;
     }
-    fieldDrawing.value = JSON.stringify({ strokes: strokes.map(s => ({ points: s.points })) });
+    fieldDrawing.value = JSON.stringify({
+      strokes: strokes.map(s => ({ points: s.points, color: s.color, width: s.width })),
+    });
   });
 
-  video.addEventListener('loadedmetadata', resizeCanvas);
+  function onVideoReady() {
+    resizeCanvas();
+    buildTimelineMarkers();
+    updatePlayhead();
+    if (HIGHLIGHT_ID != null) showAnnotation(HIGHLIGHT_ID);
+  }
+  video.addEventListener('loadedmetadata', onVideoReady);
   window.addEventListener('resize', resizeCanvas);
-  if (video.readyState >= 1) resizeCanvas();
+  if (video.readyState >= 1) onVideoReady();
 })();
 </script>
 

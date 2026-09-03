@@ -87,12 +87,32 @@ queda perfectamente alineado con la imagen del video (sin importar la
 proporción del clip), los trazos se guardan y se recuperan bien, y los
 estados "explorando" / "dibujando" no se pisan entre sí.
 
-Todavía **no** hay clic-en-la-lista-para-saltar al momento con el dibujo
-mostrado encima, ni marcadores de color en la línea de tiempo del video —
-eso es la fase 3.
+**Fase 3 (Listado y navegación) — lista.** Debajo del video hay una línea
+de tiempo propia (no la barra nativa del navegador, que no se puede
+decorar) con un marcador en forma de rombo por cada anotación, del mismo
+color que esa anotación, en la posición proporcional a su momento exacto.
 
-**Siguiente paso: Fase 3 (Listado y navegación).** Clic en una anotación de
-la lista salta el video a ese momento, muestra el dibujo guardado encima
-(en vez del canvas en blanco) y resalta esa anotación en la lista;
-marcadores de color en la línea de tiempo del video para ver de un vistazo
-dónde hay comentarios.
+- Al hacer clic en un marcador de la línea de tiempo, o en una anotación de
+  la lista de la derecha, el video salta directo a ese segundo y vuelve a
+  mostrar el trazo guardado encima — el dibujo nunca se pierde al guardar,
+  solo no se volvía a mostrar hasta ahora; después de guardar una
+  anotación nueva, la página salta automáticamente a ella y muestra su
+  dibujo, para que quede claro que sí quedó guardado.
+- Esa anotación queda resaltada a la vez en la lista (fondo y borde de
+  color) y en la línea de tiempo (el rombo se agranda).
+- Si mueves el video a mano (arrastrando la línea de tiempo propia o los
+  controles nativos, o dándole play), el dibujo mostrado se limpia solo —
+  vuelve a aparecer al hacer clic en otra anotación.
+
+Probado igual que la fase 2, con Playwright controlando un navegador real:
+los marcadores quedan en la posición correcta, el salto y el resaltado
+funcionan tanto desde la lista como desde la línea de tiempo, el trazo
+guardado se redibuja bien, y el flujo completo de crear→dibujar→guardar
+termina mostrando el dibujo (no un canvas en blanco).
+
+## Qué falta
+
+Editar una anotación ya guardada (por ahora solo se puede crear y
+eliminar), y manejo más pulido de cuando hay varios videos por
+tarea+estudiante — es la fase 4 ("Pulido") mencionada más arriba, todavía
+no empezada.

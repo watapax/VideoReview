@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import uuid
@@ -885,6 +886,29 @@ def video_review(video_id: int, request: Request):
             }
             for a in annotations
         ]
+        # Para el JS: datos completos (tiempo exacto, dibujo) de cada anotación,
+        # para poder saltar el video a su momento y volver a dibujar sus trazos
+        # sin pedirle nada más al servidor. Se manda como JSON embebido en un
+        # <script type="application/json">, no como atributos HTML, porque
+        # drawing_data ya es JSON en sí mismo (habría que escapar comillas dos
+        # veces). El reemplazo de "</" evita que un note con ese texto cierre
+        # el <script> antes de tiempo.
+        annotations_json = json.dumps(
+            [
+                {
+                    "id": a.id,
+                    "time_seconds": a.time_seconds,
+                    "color": a.color if a.color in ALLOWED_ANNOTATION_COLORS else "#5b7cfa",
+                    "drawing_data": a.drawing_data,
+                }
+                for a in annotations
+            ]
+        ).replace("</", "<\\/")
+
+        try:
+            highlight_id = int(request.query_params.get("highlight") or 0) or None
+        except ValueError:
+            highlight_id = None
 
     return templates.TemplateResponse(
         "video_review.html",
@@ -894,6 +918,8 @@ def video_review(video_id: int, request: Request):
             "assignment": assignment,
             "student": student,
             "annotations": annotations_ctx,
+            "annotations_json": annotations_json,
+            "highlight_id": highlight_id,
             "colors": ANNOTATION_COLORS,
             "course": course,
             "courses": courses,
@@ -937,19 +963,26 @@ async def annotation_create(video_id: int, request: Request):
 
         note = (form.get("note") or "").strip()
 
-        session.add(
-            Annotation(
-                video_id=video_id,
-                time_seconds=time_seconds,
-                color=color,
-                stroke_width=stroke_width,
-                drawing_data=drawing_data,
-                note=note,
-            )
+        ann = Annotation(
+            video_id=video_id,
+            time_seconds=time_seconds,
+            color=color,
+            stroke_width=stroke_width,
+            drawing_data=drawing_data,
+            note=note,
         )
+        session.add(ann)
         session.commit()
+        session.refresh(ann)
+        new_id = ann.id
 
-    return RedirectResponse(url=f"/videos/{video_id}?msg=Anotación guardada.", status_code=303)
+    # highlight=<id>: al volver a la pantalla, salta a ese momento y vuelve a
+    # dibujar los trazos que se acaban de guardar — si no, el video queda
+    # pausado con el canvas en blanco y parece que el dibujo se hubiera
+    # perdido (no es así: queda guardado, solo que no se mostraba de nuevo).
+    return RedirectResponse(
+        url=f"/videos/{video_id}?msg=Anotación guardada.&highlight={new_id}", status_code=303
+    )
 
 
 @app.post("/annotations/{annotation_id}/delete")
