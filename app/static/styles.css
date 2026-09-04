@@ -334,6 +334,21 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 .review-video-wrap video { max-width: 100%; max-height: 100%; width: auto; height: auto; display: block; background: #000; }
 .review-video-wrap canvas { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; touch-action: none; }
 
+/* Círculo que sigue al cursor mientras se dibuja o se borra, del tamaño
+   exacto (en px) del trazo/goma que va a quedar — así se sabe de antemano
+   qué grosor va a tener antes de tocar el video. Se posiciona con left/top
+   en JS (relativos a #video-wrap, su mismo padre posicionado) en vez de con
+   transform, para no pisar el translate(-50%,-50%) que ya lo centra en el
+   punto del cursor. */
+.brush-cursor {
+  position: absolute; top: 0; left: 0; transform: translate(-50%, -50%);
+  border-radius: 50%; pointer-events: none; box-sizing: border-box;
+  border: 1.5px solid rgba(255,255,255,0.85); background: rgba(255,255,255,0.12);
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.35);
+  z-index: 2;
+}
+.brush-cursor.eraser { border-style: dashed; background: rgba(239,125,125,0.12); border-color: rgba(239,125,125,0.9); }
+
 .draw-toolbar {
   position: absolute; top: 14px; left: 14px; right: 14px;
   display: flex; align-items: center; gap: 10px;

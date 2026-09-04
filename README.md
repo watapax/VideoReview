@@ -76,13 +76,16 @@ contenedor.
   valida la extensión y el contenido del archivo).
 - **Anotar video** (botón "Anotar" en cada video): pausa el video donde
   quieras comentar, dibuja libremente encima (color y grosor a elección) y
-  escribe una nota — queda guardado en ese segundo exacto del video. La
-  barra de dibujo tiene además una goma: con ella activa, tocar o arrastrar
-  sobre un trazo lo borra entero (no borra a nivel de píxel, sino trazo
-  completo — el dibujo se guarda como datos vectoriales, no como imagen).
-  La lista de anotaciones de la derecha las muestra todas, y el lápiz de
-  cada una permite editar su dibujo/nota después de creada (el papelero,
-  eliminarla). El reproductor es propio (no el del navegador) con una sola
+  escribe una nota — queda guardado en ese segundo exacto del video. Al
+  elegir un color/grosor o activar la goma, un círculo sigue al cursor
+  sobre el video mostrando el tamaño real que va a quedar el trazo (o lo
+  que la goma va a alcanzar a borrar), antes de tocar el video. La goma
+  borra solo el tramo del trazo que toca (no el trazo completo): el dibujo
+  se guarda como datos vectoriales, no como imagen, así que "borrar" corta
+  el trazo justo ahí y deja el resto intacto. La lista de anotaciones de la
+  derecha las muestra todas, y el lápiz de cada una permite editar su
+  dibujo/nota después de creada (el papelero, eliminarla). El reproductor
+  es propio (no el del navegador) con una sola
   línea de tiempo — sin barras dobles — que se puede arrastrar de forma
   fluida y que muestra un marcador en forma de rombo por cada anotación
   (del color de esa anotación). Al hacer clic en un marcador o en una

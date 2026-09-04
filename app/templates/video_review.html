@@ -24,6 +24,7 @@
         <div class="review-video-wrap" id="video-wrap">
           <video id="review-video" preload="metadata" src="/videos/{{ video.id }}/stream"></video>
           <canvas id="draw-canvas"></canvas>
+          <div class="brush-cursor" id="brush-cursor" hidden></div>
 
           <div class="draw-toolbar" id="draw-toolbar" hidden>
             <div class="draw-toolbar-group">
@@ -133,6 +134,7 @@
   const wrap = document.getElementById('video-wrap');
   const canvas = document.getElementById('draw-canvas');
   const ctx = canvas.getContext('2d');
+  const brushCursor = document.getElementById('brush-cursor');
   const toolbar = document.getElementById('draw-toolbar');
   const newBtn = document.getElementById('new-annotation-btn');
   const creatingActions = document.getElementById('creating-actions');
@@ -181,10 +183,12 @@
   let editingId = null;
   let strokes = [];
   let currentStroke = null;
-  // Goma: no borra a nivel de píxel (el trazo se guarda como datos vectoriales,
-  // no como imagen — ver Annotation.drawing_data) sino a nivel de TRAZO
-  // completo: mientras está activa, tocar o arrastrar sobre un trazo lo
-  // elimina entero (ver eraseAt/strokeHitAt más abajo).
+  // Goma: el trazo se guarda como datos vectoriales (una lista de puntos),
+  // no como imagen — ver Annotation.drawing_data. Borrar "solo la parte que
+  // toca" entonces significa CORTAR el trazo en ese tramo: se recorren sus
+  // puntos y se quitan los que caen dentro del radio de la goma, partiendo
+  // el trazo en dos (o más) trazos nuevos con lo que sobrevive a cada lado
+  // (ver eraseStrokeSegmentAt más abajo) — no se borra el trazo entero.
   let erasing = false;
   let selectedColor = fieldColor.value;
   let selectedWidth = parseFloat(fieldWidth.value);
@@ -461,46 +465,77 @@
     ];
   }
 
-  // Distancia de un punto (px,py, en píxeles de canvas) al segmento (x1,y1)-(x2,y2).
-  function distToSegment(px, py, x1, y1, x2, y2) {
-    const dx = x2 - x1, dy = y2 - y1;
-    const lenSq = dx * dx + dy * dy;
-    let t = lenSq ? ((px - x1) * dx + (py - y1) * dy) / lenSq : 0;
-    t = Math.max(0, Math.min(1, t));
-    return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+  // Radio (en píxeles de canvas — que acá equivalen 1:1 a píxeles de
+  // pantalla, ver resizeCanvas) de la goma. Se ve reflejado tal cual en el
+  // círculo que sigue al cursor (brush-cursor), así no hay sorpresas de
+  // tamaño entre lo que se muestra y lo que realmente borra.
+  const ERASER_RADIUS = 16;
+
+  // Corta cada trazo en el punto donde la goma lo toca, en vez de borrarlo
+  // entero: recorre los puntos del trazo y separa "lo que sobrevive antes"
+  // de "lo que sobrevive después" de cada tramo tocado, generando 0, 1 o
+  // varios trazos nuevos a partir de uno. Un trazo que la goma nunca toca
+  // se deja intacto. Se prueba punto por punto (no segmento a segmento)
+  // porque el trazo original ya tiene un punto por cada pointermove del
+  // dibujo — de sobra denso para que el corte se sienta preciso.
+  function eraseStrokeSegmentAt(px, py, radius) {
+    let changed = false;
+    const result = [];
+    strokes.forEach(stroke => {
+      const pts = stroke.points || [];
+      let run = [];
+      const flush = () => {
+        if (run.length >= 2) result.push({ points: run, color: stroke.color, width: stroke.width });
+        run = [];
+      };
+      pts.forEach(p => {
+        const x = p[0] * canvas.width, y = p[1] * canvas.height;
+        if (Math.hypot(px - x, py - y) <= radius) {
+          changed = true;
+          flush();
+        } else {
+          run.push(p);
+        }
+      });
+      flush();
+    });
+    if (changed) {
+      strokes = result;
+      redraw();
+    }
   }
 
-  // true si el punto (px,py) cae a menos de `tolerance` píxeles de algún
-  // segmento del trazo — así "tocar cerca" de una línea alcanza para
-  // seleccionarla con la goma, sin tener que acertar el píxel exacto.
-  function strokeHitAt(stroke, px, py, tolerance) {
-    const pts = stroke.points;
-    if (!pts || pts.length === 0) return false;
-    if (pts.length === 1) {
-      return Math.hypot(px - pts[0][0] * canvas.width, py - pts[0][1] * canvas.height) <= tolerance;
-    }
-    for (let i = 0; i < pts.length - 1; i++) {
-      const x1 = pts[i][0] * canvas.width, y1 = pts[i][1] * canvas.height;
-      const x2 = pts[i + 1][0] * canvas.width, y2 = pts[i + 1][1] * canvas.height;
-      if (distToSegment(px, py, x1, y1, x2, y2) <= tolerance) return true;
-    }
-    return false;
-  }
-
-  const ERASER_TOLERANCE = 16;
   function eraseAt(e) {
     const p = pointFromEvent(e);
-    const px = p[0] * canvas.width, py = p[1] * canvas.height;
-    const before = strokes.length;
-    strokes = strokes.filter(s => !strokeHitAt(s, px, py, ERASER_TOLERANCE));
-    if (strokes.length !== before) redraw();
+    eraseStrokeSegmentAt(p[0] * canvas.width, p[1] * canvas.height, ERASER_RADIUS);
   }
 
   function setErasing(on) {
     erasing = on;
     eraserBtn.classList.toggle('active', erasing);
-    canvas.style.cursor = erasing ? 'cell' : 'crosshair';
+    canvas.style.cursor = 'none';
+    updateBrushCursorSize();
   }
+
+  // Círculo que sigue al cursor mostrando el tamaño real (brocha o goma)
+  // que va a quedar — se oculta el cursor nativo (canvas.style.cursor =
+  // 'none', ver setErasing/enterCreating/enterEditing) y se reemplaza por
+  // este círculo, del mismo diámetro en px que el trazo/goma resultante.
+  function updateBrushCursorSize() {
+    const size = erasing ? ERASER_RADIUS * 2 : selectedWidth;
+    brushCursor.style.width = size + 'px';
+    brushCursor.style.height = size + 'px';
+    brushCursor.classList.toggle('eraser', erasing);
+  }
+
+  function positionBrushCursor(e) {
+    const wrapRect = wrap.getBoundingClientRect();
+    brushCursor.style.left = (e.clientX - wrapRect.left) + 'px';
+    brushCursor.style.top = (e.clientY - wrapRect.top) + 'px';
+  }
+
+  canvas.addEventListener('pointerenter', () => { if (creating) brushCursor.hidden = false; });
+  canvas.addEventListener('pointerleave', () => { brushCursor.hidden = true; });
 
   canvas.addEventListener('pointerdown', e => {
     if (!creating) return;
@@ -512,6 +547,7 @@
     currentStroke = { points: [pointFromEvent(e)], color: selectedColor, width: selectedWidth };
   });
   canvas.addEventListener('pointermove', e => {
+    if (creating) positionBrushCursor(e);
     if (!creating) return;
     if (erasing) {
       // e.buttons=1 -> botón principal (o el dedo/lápiz) sigue presionado:
@@ -653,6 +689,7 @@
     creatingActions.hidden = true;
     canvas.style.pointerEvents = 'none';
     setErasing(false);
+    brushCursor.hidden = true;
     noteInput.value = '';
     highlightRow(null);
     redraw();

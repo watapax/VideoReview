@@ -173,12 +173,21 @@ de tiempo avanza en tiempo real bajo latencia de red simulada.
 **Fase 5 (Informe público + goma) — lista.**
 
 - **Goma en la barra de dibujo**: junto a deshacer/borrar todo, un botón de
-  goma — al activarla, tocar o arrastrar sobre un trazo lo borra. No es un
-  borrador de píxeles (el dibujo se guarda como datos vectoriales, no como
-  imagen — ver `Annotation.drawing_data`), así que borra a nivel de
-  **trazo completo**: cualquier trazo que la goma toque desaparece entero,
-  los demás quedan intactos. Se desactiva sola al cambiar de color/grosor o
-  al salir del modo dibujo.
+  goma — al activarla, tocar o arrastrar sobre un trazo borra **solo el
+  tramo que toca**, no el trazo completo. El dibujo se guarda como datos
+  vectoriales (una lista de puntos por trazo), no como imagen — ver
+  `Annotation.drawing_data` — así que "borrar" corta el trazo en ese punto:
+  el trazo se parte en dos (o más) trazos nuevos con lo que sobrevive a
+  cada lado del corte (`eraseStrokeSegmentAt` en video_review.html). Se
+  desactiva sola al cambiar de color/grosor o al salir del modo dibujo.
+- **Círculo de tamaño real en el cursor**: al elegir un color/grosor de
+  brocha, o al activar la goma, un círculo sigue al cursor sobre el video
+  mostrando el diámetro exacto (en píxeles) que va a quedar el trazo, o lo
+  que la goma va a alcanzar a borrar — así se sabe de antemano el tamaño
+  antes de tocar el video, sin tener que probar y deshacer. Se oculta el
+  cursor nativo mientras tanto (reemplazado por este círculo) y se ve
+  distinto en modo goma (borde punteado) para no confundirlo con la
+  brocha.
 - **El informe de curso también es un link público**: el botón "Compartir
   informe" (junto a "Exportar / Imprimir") copia un link (`/report/{token}`,
   un token por tarea) con el mismo informe, sin pedir contraseña — para que
@@ -193,13 +202,15 @@ de tiempo avanza en tiempo real bajo latencia de red simulada.
   Al imprimir/exportar a PDF vuelve a un estilo claro de alto contraste
   (pensado para papel, no para pantalla).
 
-Probado con Playwright: la goma borra un trazo sin afectar los demás y el
-resultado se guarda así; el botón "Compartir informe" copia el link
-correcto; la página pública del informe muestra el mismo contenido sin los
-controles del profesor (sin botón compartir, sin volver a Corregir); el
-botón de video en el resumen de notas solo aparece para estudiantes con
-videos subidos; y un token de informe inválido muestra la página amigable
-de "link no válido".
+Probado con Playwright: el círculo del cursor aparece al entrar al video con
+el tamaño del grosor elegido, crece/cambia de forma al pasar a un grosor
+distinto o a la goma, y se oculta al salir del video; la goma, al pasar por
+la mitad de un trazo largo, lo deja partido en dos trazos separados (no lo
+borra completo); el botón "Compartir informe" copia el link correcto; la
+página pública del informe muestra el mismo contenido sin los controles del
+profesor (sin botón compartir, sin volver a Corregir); el botón de video en
+el resumen de notas solo aparece para estudiantes con videos subidos; y un
+token de informe inválido muestra la página amigable de "link no válido".
 
 ## Qué falta
 
