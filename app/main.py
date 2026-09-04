@@ -984,6 +984,37 @@ def video_delete(video_id: int, request: Request):
     )
 
 
+@app.post("/videos/{video_id}/rename")
+async def video_rename(video_id: int, request: Request):
+    """Cambia solo la etiqueta (nombre visible) del video — el nombre real
+    del archivo en R2 (object_key) no cambia. Existe porque al subir varios
+    videos a la vez cada uno queda con el nombre del archivo como etiqueta
+    (ver video_upload), y eso casi nunca es un nombre útil para el
+    profesor — acá se puede corregir después, sin tener que volver a subir
+    nada."""
+    redirect = require_login(request)
+    if redirect:
+        return redirect
+
+    form = await request.form()
+    new_label = (form.get("label") or "").strip()
+
+    with Session(engine) as session:
+        video = session.get(Video, video_id)
+        if not video:
+            return RedirectResponse(url="/", status_code=303)
+        assignment_id, student_id = video.assignment_id, video.student_id
+        if new_label:
+            video.label = new_label
+            session.add(video)
+            session.commit()
+
+    return RedirectResponse(
+        url=f"/assignments/{assignment_id}?student_id={student_id}&tab=videos",
+        status_code=303,
+    )
+
+
 # ----------------------------------------------------------- anotaciones ----
 # Fase 2: dibujo libre sobre el video (color + grosor) y una nota de texto,
 # guardados en un momento específico (en segundos). Todavía sin línea de

@@ -243,7 +243,42 @@ archivo con etiqueta manual sigue respetando esa etiqueta; y un lote
 mixto (un archivo válido + uno con contenido inválido disfrazado de
 `.mp4`) se rechaza completo, sin crear ningún video nuevo.
 
+### Fase 7 — Arreglo del círculo de la brocha, arrastrar y soltar, renombrar
+
+- **Arreglo: el círculo de la brocha/goma ya no queda desfasado**. Desde
+  la fase 5 el indicador de tamaño se anclaba a propósito unos px por
+  debajo de la punta del cursor (para no taparlo). En la práctica ese
+  desface hacía difícil calcular bien dónde iba a caer el trazo, sobre
+  todo dibujando rápido. Ahora el círculo queda centrado exactamente en la
+  punta del cursor — el mismo punto donde cae el trazo real — sin que
+  eso oculte el cursor nativo del sistema (que de todos modos siempre se
+  dibuja encima de cualquier cosa de la página, círculo incluido).
+- **Arrastrar y soltar videos**: en la pestaña Videos, ahora se pueden
+  arrastrar uno o varios archivos `.mp4` desde el explorador de archivos o
+  Finder y soltarlos en cualquier parte de la pestaña (no hace falta
+  acertarle a la tarjeta chica de subir) — un overlay avisa cuándo se
+  puede soltar, y al soltar se suben solos, sin tocar el selector de
+  archivos. Usa exactamente las mismas reglas de subida que elegir los
+  archivos a mano (validación de `.mp4`, etiqueta automática por nombre de
+  archivo si son varios, etc.), porque por dentro llena el mismo input y
+  envía el mismo formulario.
+- **Cambiar el nombre de un video ya subido**: el lápiz junto al nombre de
+  cada video (en la tarjeta, dentro de la pestaña Videos) abre un campo
+  para escribir un nombre nuevo y guardarlo — pensado sobre todo para
+  después de subir varios videos a la vez, donde cada uno queda con el
+  nombre del archivo tal cual (ej. "IMG_4821.mp4") en vez de algo útil
+  como "Intento 2".
+
+Probado con Playwright: el círculo del pincel aparece centrado en el
+cursor con menos de 2px de diferencia (antes quedaba desfasado a
+propósito) y dibujar/guardar un trazo sigue funcionando igual; soltar un
+archivo sobre la pestaña de Videos muestra el overlay mientras se arrastra
+y sube el video solo al soltarlo, apareciendo en la lista etiquetado con
+su nombre de archivo; y renombrar un video actualiza el nombre al
+guardar, cancelar no guarda nada, y ninguna de las dos acciones crea o
+elimina videos.
+
 ## Qué falta
 
-Nada pendiente de esta función por ahora — las seis fases están
+Nada pendiente de esta función por ahora — las siete fases están
 completas y probadas.

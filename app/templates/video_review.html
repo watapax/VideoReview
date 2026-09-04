@@ -517,11 +517,13 @@
     updateBrushCursorSize();
   }
 
-  // Indicador de tamaño que sigue al cursor, ANCLADO justo debajo de la
-  // punta (no lo reemplaza ni lo tapa — el cursor normal del sistema sigue
-  // visible en todo momento) mostrando el diámetro real, en píxeles, del
-  // trazo/goma que va a quedar.
-  const BRUSH_CURSOR_OFFSET = 22; // separación (px) entre la punta del cursor y el indicador
+  // Indicador de tamaño que sigue al cursor, CENTRADO justo en la punta —
+  // ahí mismo es donde cae el trazo real (mismo punto que registra
+  // pointFromEvent para dibujar), así el círculo muestra exactamente dónde
+  // va a quedar el trazo/goma, no un punto aproximado al lado. No reemplaza
+  // el cursor nativo del sistema (que sigue visible encima de cualquier
+  // elemento de la página, sin importar qué haya debajo): es un círculo
+  // traslúcido, no algo que oculte al cursor con CSS `cursor:none`.
   function updateBrushCursorSize() {
     const size = erasing ? ERASER_RADIUS * 2 : selectedWidth;
     brushCursor.style.width = size + 'px';
@@ -532,7 +534,7 @@
   function positionBrushCursor(e) {
     const wrapRect = wrap.getBoundingClientRect();
     brushCursor.style.left = (e.clientX - wrapRect.left) + 'px';
-    brushCursor.style.top = (e.clientY - wrapRect.top + BRUSH_CURSOR_OFFSET) + 'px';
+    brushCursor.style.top = (e.clientY - wrapRect.top) + 'px';
   }
 
   // Recién entrado a "creating" (botón "+ Nueva anotación" o el lápiz de

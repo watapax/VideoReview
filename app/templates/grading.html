@@ -75,9 +75,10 @@
       </form>
     </div>
 
-    <div class="tab-panel" data-panel="videos" style="{{ '' if active_tab == 'videos' else 'display:none;' }}">
+    <div class="tab-panel" data-panel="videos" id="videos-dropzone" style="{{ '' if active_tab == 'videos' else 'display:none;' }}">
+      <div class="videos-drop-overlay" id="videos-drop-overlay" hidden>Suelta para subir</div>
       <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:14px;">
-        <p class="videos-hint" style="margin:0;">Puedes subir varios videos a la vez para esta tarea y este estudiante — por ejemplo, distintos intentos o ángulos de la misma entrega. Solo se aceptan archivos .mp4.</p>
+        <p class="videos-hint" style="margin:0;">Puedes subir varios videos a la vez para esta tarea y este estudiante — por ejemplo, distintos intentos o ángulos de la misma entrega. Arrastra los archivos desde tu carpeta y suéltalos aquí, o elígelos con el botón. Solo se aceptan archivos .mp4.</p>
         {% if videos_share_url %}
         <button type="button" class="btn secondary share-video-btn" data-share-url="{{ videos_share_url }}" style="flex-shrink:0; white-space:nowrap;">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="M16 6l-4-4-4 4"/><path d="M12 2v14"/></svg>
@@ -97,7 +98,17 @@
         <div class="card video-card">
           <video controls preload="none" src="/videos/{{ v.id }}/stream"></video>
           <div class="video-card-body">
-            <div class="video-card-title">{{ v.label }}</div>
+            <div class="video-card-title-row" id="video-title-row-{{ v.id }}">
+              <div class="video-card-title">{{ v.label }}</div>
+              <button type="button" class="icon-btn small rename-video-btn" data-video-id="{{ v.id }}" title="Cambiar nombre">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+              </button>
+            </div>
+            <form method="post" action="/videos/{{ v.id }}/rename" class="video-rename-form" id="rename-form-{{ v.id }}" hidden>
+              <input type="text" name="label" value="{{ v.label }}" maxlength="60" required class="video-rename-input">
+              <button type="submit" class="btn secondary" style="padding:5px 9px;">Guardar</button>
+              <button type="button" class="btn secondary rename-cancel-btn" data-video-id="{{ v.id }}" style="padding:5px 9px;">Cancelar</button>
+            </form>
             <div class="video-card-meta">
               {{ v.size_display }}{% if v.size_display %} · {% endif %}subido {{ v.uploaded_display }}
               {% if v.annotation_count %} · {{ v.annotation_count }} anotación{{ 'es' if v.annotation_count != 1 else '' }}{% endif %}
@@ -117,7 +128,7 @@
           <input type="file" name="files" id="video-upload-input" accept="video/mp4,.mp4" required multiple>
           <input type="text" name="label" id="video-upload-label" placeholder="Etiqueta (ej. Intento 1)" maxlength="60">
           <button type="submit" class="btn" id="video-upload-submit">Subir video</button>
-          <div class="video-upload-hint" id="video-upload-hint">Solo .mp4 — puedes elegir varios a la vez</div>
+          <div class="video-upload-hint" id="video-upload-hint">Solo .mp4 — puedes elegir varios a la vez, o arrastrarlos aquí</div>
         </form>
       </div>
     </div>
@@ -199,6 +210,87 @@
       labelInput.placeholder = multiple ? 'Etiqueta (solo si subes un video a la vez)' : 'Etiqueta (ej. Intento 1)';
       submitBtn.textContent = multiple ? `Subir ${n} videos` : 'Subir video';
       hint.textContent = multiple ? `${n} archivos seleccionados — cada uno usará su propio nombre como etiqueta` : defaultHint;
+    });
+  })();
+
+  // Arrastrar archivos desde el explorador/Finder y soltarlos en la pestaña
+  // de Videos para subirlos directo, sin tener que abrir el selector de
+  // archivos. Se reusa el mismo input (con `multiple`) y el mismo listener
+  // de 'change' de arriba -- así el form queda exactamente en el mismo
+  // estado que si se hubieran elegido los archivos a mano -- y se envía
+  // solo. La zona de suelta es toda la pestaña (no solo la tarjeta chica de
+  // subir) para que sea fácil de acertar; un contador de dragenter/leave
+  // evita que el overlay parpadee al pasar sobre las tarjetas de video de
+  // adentro (dragleave dispara también al entrar a un hijo).
+  (function () {
+    const dropzone = document.getElementById('videos-dropzone');
+    const overlay = document.getElementById('videos-drop-overlay');
+    const form = document.getElementById('video-upload-form');
+    const fileInput = document.getElementById('video-upload-input');
+    if (!dropzone || !form || !fileInput) return;
+
+    let dragCounter = 0;
+
+    function hasFiles(e) {
+      return e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+    }
+
+    dropzone.addEventListener('dragenter', e => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      dragCounter++;
+      overlay.hidden = false;
+    });
+    dropzone.addEventListener('dragover', e => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+    });
+    dropzone.addEventListener('dragleave', e => {
+      if (!hasFiles(e)) return;
+      dragCounter = Math.max(0, dragCounter - 1);
+      if (dragCounter === 0) overlay.hidden = true;
+    });
+    dropzone.addEventListener('drop', e => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      dragCounter = 0;
+      overlay.hidden = true;
+      const files = e.dataTransfer.files;
+      if (!files || !files.length) return;
+      fileInput.files = files;
+      fileInput.dispatchEvent(new Event('change'));
+      if (form.requestSubmit) form.requestSubmit(); else form.submit();
+    });
+
+    // Red de seguridad: si el archivo se suelta fuera de la zona por poco
+    // (o el usuario suelta en otra parte de la página), evita que el
+    // navegador lo abra/navegue a él en vez de nada.
+    window.addEventListener('dragover', e => { if (hasFiles(e)) e.preventDefault(); });
+    window.addEventListener('drop', e => { if (hasFiles(e)) e.preventDefault(); });
+  })();
+
+  // Cambiar el nombre de un video ya subido -- útil sobre todo tras subir
+  // varios a la vez, donde cada uno queda con el nombre del archivo (ver
+  // video_upload en main.py) en vez de un nombre elegido a mano.
+  (function () {
+    document.querySelectorAll('.rename-video-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.videoId;
+        document.getElementById(`video-title-row-${id}`).hidden = true;
+        const form = document.getElementById(`rename-form-${id}`);
+        form.hidden = false;
+        const input = form.querySelector('.video-rename-input');
+        input.focus();
+        input.select();
+      });
+    });
+    document.querySelectorAll('.rename-cancel-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.videoId;
+        document.getElementById(`rename-form-${id}`).hidden = true;
+        document.getElementById(`video-title-row-${id}`).hidden = false;
+      });
     });
   })();
 </script>

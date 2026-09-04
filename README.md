@@ -70,11 +70,15 @@ contenedor.
 - **Videos** (pestaña dentro de Corregir): sube uno o varios videos `.mp4`
   por estudiante y tarea (por ejemplo, distintos intentos) — el selector de
   archivos permite elegir varios a la vez, así no hay que repetir el
-  formulario uno por uno. Si subes varios juntos, cada video queda
-  etiquetado con su propio nombre de archivo (la etiqueta manual del
-  formulario solo aplica cuando subes uno solo); si alguno de los archivos
-  elegidos no es un `.mp4` válido, no se sube ninguno del lote y se avisa
-  cuál falló, para no dejar una subida a medias. Revísalos con los
+  formulario uno por uno; también puedes arrastrar los archivos desde tu
+  carpeta y soltarlos en cualquier parte de la pestaña (no solo sobre la
+  tarjeta de subir) para que se suban directo, sin abrir el selector. Si
+  subes varios juntos, cada video queda etiquetado con su propio nombre de
+  archivo (la etiqueta manual del formulario solo aplica cuando subes uno
+  solo) — el lápiz junto al nombre de cada video ya subido permite
+  cambiarle el nombre después, en cualquier momento. Si alguno de los
+  archivos elegidos no es un `.mp4` válido, no se sube ninguno del lote y
+  se avisa cuál falló, para no dejar una subida a medias. Revísalos con los
   controles de tiempo normales del navegador. Los archivos se guardan en
   un bucket de Cloudflare R2, no en el servidor — necesita las variables
   `R2_*` configuradas (ver `.env.example`); sin ellas la pestaña se ve pero
@@ -83,10 +87,11 @@ contenedor.
 - **Anotar video** (botón "Anotar" en cada video): pausa el video donde
   quieras comentar, dibuja libremente encima (color y grosor a elección) y
   escribe una nota — queda guardado en ese segundo exacto del video. Al
-  elegir un color/grosor o activar la goma, un pequeño indicador aparece
-  justo debajo del cursor (sin ocultarlo) mostrando el tamaño real que va a
-  quedar el trazo (o lo que la goma va a alcanzar a borrar), antes de tocar
-  el video. La goma
+  elegir un color/grosor o activar la goma, un pequeño círculo sigue al
+  cursor (sin ocultarlo — el cursor normal del sistema sigue visible) y
+  queda centrado justo en la punta, en el mismo punto exacto donde va a
+  caer el trazo, mostrando de antemano el tamaño real que va a quedar (o lo
+  que la goma va a alcanzar a borrar). La goma
   borra solo el tramo del trazo que toca (no el trazo completo): el dibujo
   se guarda como datos vectoriales, no como imagen, así que "borrar" corta
   el trazo justo ahí y deja el resto intacto. La lista de anotaciones de la
