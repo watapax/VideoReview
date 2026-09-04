@@ -68,18 +68,25 @@ contenedor.
   videos subidos en esa tarea muestra además un botón "Videos" directo a
   sus anotaciones.
 - **Videos** (pestaña dentro de Corregir): sube uno o varios videos `.mp4`
-  por estudiante y tarea (por ejemplo, distintos intentos), y revísalos con
-  los controles de tiempo normales del navegador. Los archivos se guardan
-  en un bucket de Cloudflare R2, no en el servidor — necesita las variables
+  por estudiante y tarea (por ejemplo, distintos intentos) — el selector de
+  archivos permite elegir varios a la vez, así no hay que repetir el
+  formulario uno por uno. Si subes varios juntos, cada video queda
+  etiquetado con su propio nombre de archivo (la etiqueta manual del
+  formulario solo aplica cuando subes uno solo); si alguno de los archivos
+  elegidos no es un `.mp4` válido, no se sube ninguno del lote y se avisa
+  cuál falló, para no dejar una subida a medias. Revísalos con los
+  controles de tiempo normales del navegador. Los archivos se guardan en
+  un bucket de Cloudflare R2, no en el servidor — necesita las variables
   `R2_*` configuradas (ver `.env.example`); sin ellas la pestaña se ve pero
   avisa que no puede recibir subidas todavía. Solo se aceptan `.mp4` (se
   valida la extensión y el contenido del archivo).
 - **Anotar video** (botón "Anotar" en cada video): pausa el video donde
   quieras comentar, dibuja libremente encima (color y grosor a elección) y
   escribe una nota — queda guardado en ese segundo exacto del video. Al
-  elegir un color/grosor o activar la goma, un círculo sigue al cursor
-  sobre el video mostrando el tamaño real que va a quedar el trazo (o lo
-  que la goma va a alcanzar a borrar), antes de tocar el video. La goma
+  elegir un color/grosor o activar la goma, un pequeño indicador aparece
+  justo debajo del cursor (sin ocultarlo) mostrando el tamaño real que va a
+  quedar el trazo (o lo que la goma va a alcanzar a borrar), antes de tocar
+  el video. La goma
   borra solo el tramo del trazo que toca (no el trazo completo): el dibujo
   se guarda como datos vectoriales, no como imagen, así que "borrar" corta
   el trazo justo ahí y deja el resto intacto. La lista de anotaciones de la

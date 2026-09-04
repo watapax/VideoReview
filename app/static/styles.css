@@ -334,12 +334,14 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 .review-video-wrap video { max-width: 100%; max-height: 100%; width: auto; height: auto; display: block; background: #000; }
 .review-video-wrap canvas { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; touch-action: none; }
 
-/* Círculo que sigue al cursor mientras se dibuja o se borra, del tamaño
+/* Indicador que sigue al cursor mientras se dibuja o se borra, del tamaño
    exacto (en px) del trazo/goma que va a quedar — así se sabe de antemano
-   qué grosor va a tener antes de tocar el video. Se posiciona con left/top
-   en JS (relativos a #video-wrap, su mismo padre posicionado) en vez de con
-   transform, para no pisar el translate(-50%,-50%) que ya lo centra en el
-   punto del cursor. */
+   qué grosor va a tener antes de tocar el video. NO reemplaza el cursor
+   nativo (que sigue visible) — se ancla unos px por debajo de la punta del
+   cursor (ver BRUSH_CURSOR_OFFSET en video_review.html) para no taparlo. Se
+   posiciona con left/top en JS (relativos a #video-wrap, su mismo padre
+   posicionado) en vez de con transform, para no pisar el
+   translate(-50%,-50%) que ya lo centra en ese punto. */
 .brush-cursor {
   position: absolute; top: 0; left: 0; transform: translate(-50%, -50%);
   border-radius: 50%; pointer-events: none; box-sizing: border-box;

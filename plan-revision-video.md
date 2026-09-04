@@ -180,14 +180,13 @@ de tiempo avanza en tiempo real bajo latencia de red simulada.
   el trazo se parte en dos (o más) trazos nuevos con lo que sobrevive a
   cada lado del corte (`eraseStrokeSegmentAt` en video_review.html). Se
   desactiva sola al cambiar de color/grosor o al salir del modo dibujo.
-- **Círculo de tamaño real en el cursor**: al elegir un color/grosor de
-  brocha, o al activar la goma, un círculo sigue al cursor sobre el video
-  mostrando el diámetro exacto (en píxeles) que va a quedar el trazo, o lo
-  que la goma va a alcanzar a borrar — así se sabe de antemano el tamaño
-  antes de tocar el video, sin tener que probar y deshacer. Se oculta el
-  cursor nativo mientras tanto (reemplazado por este círculo) y se ve
-  distinto en modo goma (borde punteado) para no confundirlo con la
-  brocha.
+- **Indicador de tamaño real bajo el cursor**: al elegir un color/grosor de
+  brocha, o al activar la goma, un pequeño círculo aparece justo debajo del
+  cursor (sin taparlo ni reemplazarlo — el cursor normal del sistema sigue
+  visible en todo momento) mostrando el diámetro exacto, en píxeles, que va
+  a quedar el trazo, o lo que la goma va a alcanzar a borrar — así se sabe
+  de antemano el tamaño antes de tocar el video. Se ve distinto en modo
+  goma (borde punteado) para no confundirlo con la brocha.
 - **El informe de curso también es un link público**: el botón "Compartir
   informe" (junto a "Exportar / Imprimir") copia un link (`/report/{token}`,
   un token por tarea) con el mismo informe, sin pedir contraseña — para que
@@ -202,17 +201,49 @@ de tiempo avanza en tiempo real bajo latencia de red simulada.
   Al imprimir/exportar a PDF vuelve a un estilo claro de alto contraste
   (pensado para papel, no para pantalla).
 
-Probado con Playwright: el círculo del cursor aparece al entrar al video con
-el tamaño del grosor elegido, crece/cambia de forma al pasar a un grosor
-distinto o a la goma, y se oculta al salir del video; la goma, al pasar por
-la mitad de un trazo largo, lo deja partido en dos trazos separados (no lo
-borra completo); el botón "Compartir informe" copia el link correcto; la
+Probado con Playwright: el cursor nativo del sistema nunca se oculta; el
+indicador de tamaño aparece debajo de él al mover el mouse sobre el video
+(tanto al crear una anotación nueva como al editar una existente), con el
+tamaño del grosor elegido, cambia de forma al pasar a un grosor distinto o
+a la goma, y se oculta al salir del video; la goma, al pasar por la mitad
+de un trazo largo, lo deja partido en dos trazos separados (no lo borra
+completo); el botón "Compartir informe" copia el link correcto; la
 página pública del informe muestra el mismo contenido sin los controles del
 profesor (sin botón compartir, sin volver a Corregir); el botón de video en
 el resumen de notas solo aparece para estudiantes con videos subidos; y un
 token de informe inválido muestra la página amigable de "link no válido".
 
+### Fase 6 — Subir varios videos a la vez
+
+- **Selector de archivos múltiple**: el input de subir video ahora acepta
+  elegir varios archivos `.mp4` de una vez (antes era uno por uno, tedioso
+  para varios intentos o ángulos del mismo estudiante). El formulario
+  ajusta su texto según cuántos archivos se eligen: con uno solo se puede
+  seguir escribiendo una etiqueta manual ("Subir video"); con varios, el
+  campo de etiqueta se deshabilita (no tendría sentido que todos compartan
+  la misma) y el botón muestra la cantidad ("Subir 3 videos").
+- **Etiqueta automática por archivo**: al subir varios juntos, cada video
+  queda etiquetado con su propio nombre de archivo en vez de una etiqueta
+  manual compartida.
+- **Validación de todo el lote antes de subir cualquiera**: si entre los
+  archivos elegidos hay uno que no es un `.mp4` válido (por extensión y
+  contenido real del archivo), no se sube ninguno del lote — se avisa cuál
+  archivo falló, para no dejar una subida a medias donde no queda claro
+  qué se subió y qué no.
+- **Compatibilidad**: si falla la subida de uno de varios archivos a mitad
+  de camino (ej. un corte de conexión con R2), los que ya se subieron
+  quedan guardados y se avisa cuántos de cuántos se lograron subir.
+
+Probado con Playwright: elegir un solo archivo mantiene el campo de
+etiqueta habilitado y el botón dice "Subir video"; elegir varios lo
+deshabilita y actualiza el botón y el texto de ayuda con la cantidad;
+subir 3 archivos de una vez crea 3 videos nuevos, cada uno etiquetado con
+su nombre de archivo, con el mensaje "3 videos subidos."; subir un solo
+archivo con etiqueta manual sigue respetando esa etiqueta; y un lote
+mixto (un archivo válido + uno con contenido inválido disfrazado de
+`.mp4`) se rechaza completo, sin crear ningún video nuevo.
+
 ## Qué falta
 
-Nada pendiente de esta función por ahora — las cinco fases están
+Nada pendiente de esta función por ahora — las seis fases están
 completas y probadas.

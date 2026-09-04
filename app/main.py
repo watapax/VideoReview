@@ -863,17 +863,34 @@ async def video_upload(assignment_id: int, request: Request):
         return back("El almacenamiento de video (Cloudflare R2) no está configurado todavía en este servidor.")
 
     form = await request.form()
-    upload = form.get("file")
+    # "files" (con `multiple` en el input) es el nombre nuevo; "file" queda
+    # como respaldo por si algún formulario viejo en caché todavía manda el
+    # campo singular de antes de que se pudiera subir más de uno a la vez.
+    uploads = [f for f in form.getlist("files") if getattr(f, "filename", "")]
+    if not uploads:
+        legacy = form.get("file")
+        if legacy is not None and getattr(legacy, "filename", ""):
+            uploads = [legacy]
     label = (form.get("label") or "").strip()
 
-    if upload is None or not getattr(upload, "filename", ""):
-        return back("Elige un archivo de video.")
+    if not uploads:
+        return back("Elige uno o más archivos de video.")
 
-    header = await upload.read(12)
-    await upload.seek(0)
-
-    if not _is_valid_mp4(upload.filename, header):
-        return back("Solo se aceptan videos en formato .mp4 (ese archivo no parece ser un mp4 válido).")
+    # Valida TODOS los archivos antes de subir cualquiera — así, si uno de
+    # varios no es un .mp4 válido, no queda una subida a medias (algunos
+    # videos sí y otros no) sin que quede claro cuál falló.
+    invalid = []
+    for upload in uploads:
+        header = await upload.read(12)
+        await upload.seek(0)
+        if not _is_valid_mp4(upload.filename, header):
+            invalid.append(upload.filename)
+    if invalid:
+        return back(
+            "Solo se aceptan videos en formato .mp4 — no se subió nada porque "
+            + ("este archivo no es válido: " if len(invalid) == 1 else "estos archivos no son válidos: ")
+            + ", ".join(invalid)
+        )
 
     with Session(engine) as session:
         assignment = session.get(Assignment, assignment_id)
@@ -881,31 +898,49 @@ async def video_upload(assignment_id: int, request: Request):
         if not assignment or not student:
             return RedirectResponse(url="/?msg=Esa tarea o estudiante no existe.", status_code=303)
 
-        # Tamaño del archivo sin leerlo completo a memoria: se saca del
-        # spooled temp file que ya arma Starlette al recibir el multipart.
-        upload.file.seek(0, 2)
-        size_bytes = upload.file.tell()
-        upload.file.seek(0)
+        # La etiqueta manual solo tiene sentido para UN archivo — si se
+        # suben varios a la vez, todos quedarían con la misma etiqueta, así
+        # que en ese caso se ignora (igual que si se dejó vacía) y cada
+        # video usa su propio nombre de archivo.
+        use_manual_label = bool(label) and len(uploads) == 1
 
-        key = f"videos/{assignment_id}/{student_id}/{uuid.uuid4().hex}.mp4"
-        try:
-            await run_in_threadpool(storage.upload_fileobj, upload.file, key, "video/mp4")
-        except Exception:
-            logger.exception("Error subiendo video a R2 (assignment=%s student=%s)", assignment_id, student_id)
-            return back("No se pudo subir el video (revisa la conexión o las credenciales de R2 e intenta de nuevo).")
+        uploaded_count = 0
+        for upload in uploads:
+            # Tamaño del archivo sin leerlo completo a memoria: se saca del
+            # spooled temp file que ya arma Starlette al recibir el multipart.
+            upload.file.seek(0, 2)
+            size_bytes = upload.file.tell()
+            upload.file.seek(0)
 
-        video = Video(
-            assignment_id=assignment_id,
-            student_id=student_id,
-            label=label or upload.filename,
-            object_key=key,
-            original_filename=upload.filename,
-            size_bytes=size_bytes,
-        )
-        session.add(video)
+            key = f"videos/{assignment_id}/{student_id}/{uuid.uuid4().hex}.mp4"
+            try:
+                await run_in_threadpool(storage.upload_fileobj, upload.file, key, "video/mp4")
+            except Exception:
+                logger.exception("Error subiendo video a R2 (assignment=%s student=%s)", assignment_id, student_id)
+                if uploaded_count:
+                    session.commit()
+                    return back(
+                        f"Se subieron {uploaded_count} de {len(uploads)} videos — falló '{upload.filename}' "
+                        "(revisa la conexión o las credenciales de R2 e intenta subir el resto de nuevo)."
+                    )
+                return back("No se pudo subir el video (revisa la conexión o las credenciales de R2 e intenta de nuevo).")
+
+            video = Video(
+                assignment_id=assignment_id,
+                student_id=student_id,
+                label=label if use_manual_label else upload.filename,
+                object_key=key,
+                original_filename=upload.filename,
+                size_bytes=size_bytes,
+            )
+            session.add(video)
+            uploaded_count += 1
+
         session.commit()
 
-    return back("Video subido.")
+    if len(uploads) == 1:
+        return back("Video subido.")
+    return back(f"{uploaded_count} videos subidos.")
 
 
 @app.get("/videos/{video_id}/stream")

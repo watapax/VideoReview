@@ -513,14 +513,15 @@
   function setErasing(on) {
     erasing = on;
     eraserBtn.classList.toggle('active', erasing);
-    canvas.style.cursor = 'none';
+    canvas.style.cursor = erasing ? 'cell' : 'crosshair';
     updateBrushCursorSize();
   }
 
-  // Círculo que sigue al cursor mostrando el tamaño real (brocha o goma)
-  // que va a quedar — se oculta el cursor nativo (canvas.style.cursor =
-  // 'none', ver setErasing/enterCreating/enterEditing) y se reemplaza por
-  // este círculo, del mismo diámetro en px que el trazo/goma resultante.
+  // Indicador de tamaño que sigue al cursor, ANCLADO justo debajo de la
+  // punta (no lo reemplaza ni lo tapa — el cursor normal del sistema sigue
+  // visible en todo momento) mostrando el diámetro real, en píxeles, del
+  // trazo/goma que va a quedar.
+  const BRUSH_CURSOR_OFFSET = 22; // separación (px) entre la punta del cursor y el indicador
   function updateBrushCursorSize() {
     const size = erasing ? ERASER_RADIUS * 2 : selectedWidth;
     brushCursor.style.width = size + 'px';
@@ -531,7 +532,32 @@
   function positionBrushCursor(e) {
     const wrapRect = wrap.getBoundingClientRect();
     brushCursor.style.left = (e.clientX - wrapRect.left) + 'px';
-    brushCursor.style.top = (e.clientY - wrapRect.top) + 'px';
+    brushCursor.style.top = (e.clientY - wrapRect.top + BRUSH_CURSOR_OFFSET) + 'px';
+  }
+
+  // Recién entrado a "creating" (botón "+ Nueva anotación" o el lápiz de
+  // editar), el mouse puede YA estar sobre el canvas -- en ese caso no va a
+  // disparar un 'pointerenter' propio, así que sin esto el indicador se
+  // quedaría oculto hasta el primer movimiento. Se guarda la última
+  // posición conocida del puntero (documento entero, no solo el canvas) y
+  // se usa para mostrar el indicador de inmediato si ya cae dentro del
+  // video al entrar a modo dibujo/edición.
+  let lastPointerClientX = null;
+  let lastPointerClientY = null;
+  document.addEventListener('pointermove', e => {
+    lastPointerClientX = e.clientX;
+    lastPointerClientY = e.clientY;
+  }, { passive: true });
+
+  function syncBrushCursorFromLastPointer() {
+    if (lastPointerClientX == null) { brushCursor.hidden = true; return; }
+    const rect = canvas.getBoundingClientRect();
+    const inside = lastPointerClientX >= rect.left && lastPointerClientX <= rect.right
+      && lastPointerClientY >= rect.top && lastPointerClientY <= rect.bottom;
+    if (inside) {
+      positionBrushCursor({ clientX: lastPointerClientX, clientY: lastPointerClientY });
+    }
+    brushCursor.hidden = !inside;
   }
 
   canvas.addEventListener('pointerenter', () => { if (creating) brushCursor.hidden = false; });
@@ -630,6 +656,7 @@
     creatingActions.hidden = false;
     canvas.style.pointerEvents = 'auto';
     setErasing(false);
+    syncBrushCursorFromLastPointer();
     redraw();
   }
 
@@ -667,6 +694,7 @@
     creatingActions.hidden = false;
     canvas.style.pointerEvents = 'auto';
     setErasing(false);
+    syncBrushCursorFromLastPointer();
 
     suppressSeekClear = Math.abs(video.currentTime - ann.time_seconds) > 0.01;
     video.currentTime = ann.time_seconds;
