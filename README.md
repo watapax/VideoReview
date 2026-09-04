@@ -61,7 +61,12 @@ contenedor.
   calcula sola.
 - **Informe de curso** (`/assignments/{id}/report`): informe agrupado por
   aspecto con la nota y el feedback de todo el curso, listo para exportar
-  a PDF con el botón "Exportar / Imprimir" del navegador (Ctrl/Cmd+P).
+  a PDF con el botón "Exportar / Imprimir" del navegador (Ctrl/Cmd+P). El
+  botón "Compartir informe" copia un link público (sin contraseña) con el
+  mismo contenido, para que el curso entero lo revise sin entrar al panel
+  del profesor; en "Resumen de notas finales", cada estudiante que tenga
+  videos subidos en esa tarea muestra además un botón "Videos" directo a
+  sus anotaciones.
 - **Videos** (pestaña dentro de Corregir): sube uno o varios videos `.mp4`
   por estudiante y tarea (por ejemplo, distintos intentos), y revísalos con
   los controles de tiempo normales del navegador. Los archivos se guardan
@@ -72,8 +77,11 @@ contenedor.
 - **Anotar video** (botón "Anotar" en cada video): pausa el video donde
   quieras comentar, dibuja libremente encima (color y grosor a elección) y
   escribe una nota — queda guardado en ese segundo exacto del video. La
-  lista de anotaciones de la derecha las muestra todas, y el lápiz de cada
-  una permite editar su dibujo/nota después de creada (el papelero,
+  barra de dibujo tiene además una goma: con ella activa, tocar o arrastrar
+  sobre un trazo lo borra entero (no borra a nivel de píxel, sino trazo
+  completo — el dibujo se guarda como datos vectoriales, no como imagen).
+  La lista de anotaciones de la derecha las muestra todas, y el lápiz de
+  cada una permite editar su dibujo/nota después de creada (el papelero,
   eliminarla). El reproductor es propio (no el del navegador) con una sola
   línea de tiempo — sin barras dobles — que se puede arrastrar de forma
   fluida y que muestra un marcador en forma de rombo por cada anotación

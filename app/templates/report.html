@@ -4,54 +4,129 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Informe · {{ assignment.name }}</title>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap">
+  <link rel="stylesheet" href="/static/styles.css">
   <style>
-    * { box-sizing: border-box; }
-    body { margin: 0; font-family: 'IBM Plex Sans', system-ui, sans-serif; background: #f6f1e7; color: #2b2620; }
-    .sheet { width: 794px; max-width: 100%; margin: 0 auto; padding: 56px 60px 80px; }
-    .print-bar { position: sticky; top: 0; background: #2b2620; color: #f6f1e7; padding: 10px 24px; display: flex; justify-content: flex-end; }
-    .print-bar button { background: #c1682f; color: #2b2620; border: none; border-radius: 6px; padding: 8px 16px; font-weight: 600; font-family: inherit; cursor: pointer; }
-    header.doc { border-bottom: 2px solid #2b2620; padding-bottom: 18px; margin-bottom: 26px; }
-    .eyebrow { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #8a7e68; }
-    h1.doc-title { font-family: 'Space Grotesk', sans-serif; font-size: 27px; font-weight: 700; margin: 4px 0 0; }
-    .doc-sub { font-size: 13px; color: #5c5342; margin-top: 6px; }
-    .intro { font-size: 13px; line-height: 1.6; color: #4a4436; background: #efe6d2; border: 1px solid #ddd0ae; border-radius: 8px; padding: 14px 18px; margin-bottom: 32px; }
-    .section-title { font-family: 'Space Grotesk', sans-serif; font-size: 14px; font-weight: 600; margin-bottom: 12px; display: flex; align-items: baseline; gap: 8px; }
-    .section-title .hint { font-size: 11px; font-weight: 400; color: #8a7e68; }
-    .summary-row { display: flex; align-items: center; gap: 14px; padding: 9px 0; border-bottom: 1px solid #ddd0ae; }
-    .summary-row .name { width: 170px; font-size: 13px; font-weight: 500; }
-    .bar-track { flex-grow: 1; height: 9px; border-radius: 4px; background: #e4d8bb; overflow: hidden; }
-    .bar-fill { height: 100%; background: #c1682f; }
-    .summary-row .grade { width: 34px; text-align: right; font-family: 'Space Grotesk', sans-serif; font-size: 14px; font-weight: 700; }
-    .aspect-section { margin-bottom: 34px; }
-    .aspect-header { display: flex; align-items: center; gap: 10px; background: #2b2620; color: #f6f1e7; border-radius: 6px; padding: 9px 14px; margin-bottom: 4px; }
-    .aspect-header .name { font-family: 'Space Grotesk', sans-serif; font-size: 14px; font-weight: 600; }
-    .aspect-header .weight { font-size: 11px; color: #c9bfa8; margin-left: auto; }
-    .fb-row { padding: 16px 4px 14px; border-bottom: 1px solid #ddd0ae; }
-    .fb-row .fb-head { display: flex; align-items: center; gap: 10px; margin-bottom: 7px; }
-    .fb-row .fb-name { font-size: 13px; font-weight: 600; }
-    .chip { font-family: 'Space Grotesk', sans-serif; font-size: 12px; font-weight: 700; color: #2b2620; border-radius: 4px; padding: 1px 8px; }
-    .chip.ok { background: #bfe3cf; }
-    .chip.warn { background: #f0e0a8; }
-    .chip.bad { background: #f0c3ae; }
-    .chip.pending { background: #e4d8bb; color: #5c5342; }
-    .fb-text { font-size: 12.5px; line-height: 1.65; color: #4a4436; max-width: 660px; }
-    .footer-note { text-align: center; font-size: 11px; color: #8a7e68; margin-top: 20px; }
+    /* Reusa las variables de /static/styles.css (--bg, --panel, --accent, --ok,
+       --warn, --danger, etc.) para que el informe se vea "de la misma app" en
+       vez de un documento aparte — con textos algo más grandes que el resto de
+       la app (esto se lee más como documento largo que como pantalla de uso). */
+    body { padding: 40px 20px 80px; }
+    .sheet {
+      width: 860px; max-width: 100%; margin: 0 auto;
+      background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-lg);
+      padding: 44px 52px 56px;
+    }
+    .print-bar {
+      position: sticky; top: 0; z-index: 5;
+      background: var(--panel-2); border-bottom: 1px solid var(--border);
+      padding: 12px 20px; display: flex; justify-content: flex-end; gap: 10px;
+      margin: -40px -20px 40px;
+    }
+    .doc-back {
+      display: inline-flex; align-items: center; gap: 5px; font-size: 13px; font-weight: 600;
+      color: var(--muted); margin-bottom: 18px;
+    }
+    .doc-back:hover { color: var(--text); }
+    header.doc { border-bottom: 1px solid var(--border-strong); padding-bottom: 20px; margin-bottom: 30px; }
+    .eyebrow { font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+    h1.doc-title { font-size: 32px; margin: 6px 0 0; }
+    .doc-sub { font-size: 14px; color: var(--muted); margin-top: 7px; }
+
+    .intro {
+      font-size: 14.5px; line-height: 1.7; color: var(--text); background: var(--card);
+      border-left: 3px solid var(--accent); border-radius: 0 var(--radius-md) var(--radius-md) 0;
+      padding: 16px 20px; margin-bottom: 38px;
+    }
+
+    .section-title { font-size: 16px; font-weight: 700; margin-bottom: 14px; display: flex; align-items: baseline; gap: 8px; }
+    .section-title .hint { font-size: 12px; font-weight: 500; color: var(--muted-2); }
+
+    .summary-row { display: flex; align-items: center; gap: 16px; padding: 11px 0; border-bottom: 1px solid var(--border); }
+    .summary-row .name { width: 190px; flex-shrink: 0; font-size: 14.5px; font-weight: 600; }
+    .bar-track { flex-grow: 1; height: 9px; border-radius: 5px; background: var(--border-strong); overflow: hidden; }
+    .bar-fill { height: 100%; border-radius: 5px; }
+    .bar-fill.band-ok { background: var(--ok); }
+    .bar-fill.band-warn { background: var(--warn); }
+    .bar-fill.band-bad { background: var(--danger); }
+    .bar-fill.band-pending { background: var(--muted-2); }
+    .summary-row .grade { width: 42px; flex-shrink: 0; text-align: right; font-size: 17px; font-weight: 800; }
+    .grade.band-ok { color: var(--ok); }
+    .grade.band-warn { color: var(--warn); }
+    .grade.band-bad { color: var(--danger); }
+    .grade.band-pending { color: var(--muted-2); }
+
+    .report-video-btn {
+      display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0;
+      border: 1px solid var(--border-strong); border-radius: 999px; padding: 5px 11px 5px 9px;
+      font-size: 11.5px; font-weight: 700; color: var(--muted);
+    }
+    .report-video-btn:hover { color: var(--text); border-color: var(--accent); }
+
+    .aspect-section { margin-bottom: 38px; }
+    .aspect-header {
+      display: flex; align-items: center; gap: 10px; border-radius: var(--radius-md);
+      padding: 11px 16px; margin-bottom: 6px; border-left-width: 3px; border-left-style: solid;
+    }
+    .aspect-header .name { font-size: 15px; font-weight: 700; }
+    .aspect-header .weight { font-size: 11.5px; color: var(--muted); margin-left: auto; font-weight: 600; }
+
+    .fb-row { padding: 18px 4px 16px; border-bottom: 1px solid var(--border); }
+    .fb-row .fb-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .fb-row .fb-name { font-size: 14px; font-weight: 700; }
+    .chip { font-size: 12.5px; font-weight: 700; border-radius: 6px; padding: 2px 9px; border: 1px solid transparent; }
+    .chip.ok { background: var(--ok-bg); color: var(--ok); }
+    .chip.warn { background: var(--warn-bg); color: var(--warn); }
+    .chip.bad { background: var(--danger-bg); color: var(--danger); }
+    .chip.pending { background: transparent; color: var(--muted-2); border-color: var(--border-strong); }
+    .fb-text { font-size: 13.5px; line-height: 1.7; color: var(--muted); max-width: 680px; }
+    .fb-text.empty { color: var(--muted-2); font-style: italic; }
+
+    .footer-note { text-align: center; font-size: 11.5px; color: var(--muted-2); margin-top: 24px; }
+
     @media print {
-      * {
-        -webkit-print-color-adjust: exact !important;
-        print-color-adjust: exact !important;
-        color-adjust: exact !important;
-      }
-      .print-bar { display: none; }
-      .sheet { padding: 0; width: auto; }
-      body { background: #fff; }
+      * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
+      body { background: #fff; color: #201d1a; padding: 0; }
+      .print-bar, .doc-back, .report-video-btn { display: none !important; }
+      .sheet { background: #fff; border: none; border-radius: 0; padding: 0; width: auto; margin: 0; }
+      .eyebrow { color: #8a6a2f; }
+      h1.doc-title { color: #201d1a; }
+      .doc-sub { color: #5c5342; }
+      header.doc { border-bottom-color: #ccc2a8; }
+      .intro { background: #f3efe0; border-left-color: #c1682f; color: #4a4436; }
+      .section-title { color: #201d1a; }
+      .summary-row { border-bottom-color: #e2ddd0; }
+      .bar-track { background: #e7e2d2; }
+      .aspect-header { background: #2b2620 !important; border-left: none !important; }
+      .aspect-header .name, .aspect-header .weight { color: #f6f1e7 !important; }
+      .fb-row { border-bottom-color: #e2ddd0; }
+      .fb-text { color: #4a4436; }
+      .chip.ok { background: #bfe3cf; color: #204030; }
+      .chip.warn { background: #f0e0a8; color: #4a3c10; }
+      .chip.bad { background: #f0c3ae; color: #4a2010; }
+      .chip.pending { background: #e4d8bb; color: #5c5342; }
+      .footer-note { color: #8a7e68; }
     }
   </style>
 </head>
 <body>
-  <div class="print-bar"><button onclick="window.print()">Exportar / Imprimir</button></div>
+  <div class="print-bar">
+    {% if report_share_url %}
+    <button type="button" class="btn secondary" id="share-report-btn" data-share-url="{{ report_share_url }}">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="M16 6l-4-4-4 4"/><path d="M12 2v14"/></svg>
+      <span id="share-report-btn-label">Compartir informe</span>
+    </button>
+    {% endif %}
+    <button type="button" class="btn" onclick="window.print()">Exportar / Imprimir</button>
+  </div>
   <div class="sheet">
+    {% if report_share_url %}
+    <a class="doc-back" href="/assignments/{{ assignment.id }}">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      Volver a Corregir
+    </a>
+    {% endif %}
     <header class="doc">
       <div class="eyebrow">Escuela de Animación</div>
       <h1 class="doc-title">{{ assignment.name }}</h1>
@@ -64,23 +139,38 @@
       compañeras y compañeros en cada aspecto — así aprendemos entre todos de los mismos errores y aciertos.
     </div>
 
-    <div style="margin-bottom:36px;">
+    <div style="margin-bottom:40px;">
       <div class="section-title">Resumen de notas finales <span class="hint">(escala {{ scale_min_display }} – {{ scale_max_display }})</span></div>
-      <div style="border-top:1px solid #ddd0ae;">
+      <div style="border-top:1px solid var(--border);">
         {% for s in summary %}
         <div class="summary-row">
           <div class="name">{{ s.name }}</div>
-          <div class="bar-track"><div class="bar-fill" style="width:{{ s.pct }}%;"></div></div>
-          <div class="grade">{{ s.grade_display }}</div>
+          <div class="bar-track"><div class="bar-fill band-{{ s.band }}" style="width:{{ s.pct }}%;"></div></div>
+          <div class="grade band-{{ s.band }}">{{ s.grade_display }}</div>
+          {% if s.video_url %}
+          <a class="report-video-btn" href="{{ s.video_url }}" target="_blank" rel="noopener" title="Ver anotaciones de video de {{ s.name }}">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+            Videos
+          </a>
+          {% endif %}
         </div>
         {% endfor %}
       </div>
     </div>
 
+    {% set palette = [
+      {'c': 'var(--accent)', 'bg': 'var(--accent-soft)'},
+      {'c': 'var(--ok)', 'bg': 'var(--ok-bg)'},
+      {'c': 'var(--warn)', 'bg': 'var(--warn-bg)'},
+      {'c': 'var(--danger)', 'bg': 'var(--danger-bg)'},
+      {'c': '#c792ea', 'bg': 'rgba(199,146,234,0.14)'},
+      {'c': '#5bc8e8', 'bg': 'rgba(91,200,232,0.14)'},
+    ] %}
     {% for a in aspects %}
+    {% set pc = palette[loop.index0 % 6] %}
     <div class="aspect-section">
-      <div class="aspect-header">
-        <div class="name">{{ a.name }}</div>
+      <div class="aspect-header" style="background:{{ pc.bg }}; border-left-color:{{ pc.c }};">
+        <div class="name" style="color:{{ pc.c }};">{{ a.name }}</div>
         <div class="weight">ponderación {{ a.weight_display }}%</div>
       </div>
       {% for r in a.rows %}
@@ -89,7 +179,7 @@
           <div class="fb-name">{{ r.name }}</div>
           <div class="chip {{ r.band }}">{{ r.score_display }}</div>
         </div>
-        <div class="fb-text">{{ r.feedback or 'Sin feedback registrado.' }}</div>
+        <div class="fb-text {{ 'empty' if not r.feedback else '' }}">{{ r.feedback or 'Sin feedback registrado.' }}</div>
       </div>
       {% endfor %}
     </div>
@@ -97,5 +187,25 @@
 
     <div class="footer-note">— fin del informe · generado a partir de la rúbrica de {{ aspects|length }} aspectos —</div>
   </div>
+
+  <script>
+    (function () {
+      const btn = document.getElementById('share-report-btn');
+      if (!btn) return;
+      const label = document.getElementById('share-report-btn-label');
+      btn.addEventListener('click', async () => {
+        const url = btn.dataset.shareUrl;
+        try {
+          await navigator.clipboard.writeText(url);
+        } catch (e) {
+          window.prompt('Copia este link:', url);
+          return;
+        }
+        const original = label.textContent;
+        label.textContent = '¡Link copiado!';
+        setTimeout(() => { label.textContent = original; }, 1800);
+      });
+    })();
+  </script>
 </body>
 </html>

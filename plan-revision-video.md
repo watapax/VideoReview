@@ -170,7 +170,38 @@ video con el contador de navegación correcto, "siguiente"/"anterior" carga
 el video y las anotaciones correctas de cada uno, y el arrastre de la línea
 de tiempo avanza en tiempo real bajo latencia de red simulada.
 
+**Fase 5 (Informe público + goma) — lista.**
+
+- **Goma en la barra de dibujo**: junto a deshacer/borrar todo, un botón de
+  goma — al activarla, tocar o arrastrar sobre un trazo lo borra. No es un
+  borrador de píxeles (el dibujo se guarda como datos vectoriales, no como
+  imagen — ver `Annotation.drawing_data`), así que borra a nivel de
+  **trazo completo**: cualquier trazo que la goma toque desaparece entero,
+  los demás quedan intactos. Se desactiva sola al cambiar de color/grosor o
+  al salir del modo dibujo.
+- **El informe de curso también es un link público**: el botón "Compartir
+  informe" (junto a "Exportar / Imprimir") copia un link (`/report/{token}`,
+  un token por tarea) con el mismo informe, sin pedir contraseña — para que
+  el curso completo lo revise sin entrar al panel del profesor. En
+  "Resumen de notas finales", cada estudiante que tenga al menos un video
+  subido en esa tarea muestra un botón "Videos" directo a sus anotaciones
+  (mismo link que genera "Compartir" en la pantalla de anotar).
+- **Rediseño del informe**: dejó el estilo claro/vintage (fondo crema,
+  tipografía de imprenta) por uno oscuro y colorido a tono con el resto de
+  la app (mismos colores y tipografía Manrope), con textos más grandes y
+  cada aspecto de la rúbrica con su propio color para ubicarse más fácil.
+  Al imprimir/exportar a PDF vuelve a un estilo claro de alto contraste
+  (pensado para papel, no para pantalla).
+
+Probado con Playwright: la goma borra un trazo sin afectar los demás y el
+resultado se guarda así; el botón "Compartir informe" copia el link
+correcto; la página pública del informe muestra el mismo contenido sin los
+controles del profesor (sin botón compartir, sin volver a Corregir); el
+botón de video en el resumen de notas solo aparece para estudiantes con
+videos subidos; y un token de informe inválido muestra la página amigable
+de "link no válido".
+
 ## Qué falta
 
-Nada pendiente de esta función por ahora — las cuatro fases están
+Nada pendiente de esta función por ahora — las cinco fases están
 completas y probadas.

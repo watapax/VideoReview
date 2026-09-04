@@ -98,6 +98,23 @@ class VideoShare(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class ReportShare(SQLModel, table=True):
+    """Token del link público de solo lectura del informe de curso
+    (/report/{share_token}) — es por TAREA (todo el curso a la vez), no por
+    estudiante: el informe ya reúne a propósito el feedback de todo el curso
+    agrupado por aspecto, para que se aprenda del feedback de los
+    compañeros (ver la intro de report.html). Se crea la primera vez que el
+    profesor pide el link (botón "Compartir informe" en /assignments/{id}/report).
+    Es una tabla nueva: no necesita su propia función de migración, basta
+    con que init_db() la cree vía metadata.create_all().
+    """
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    assignment_id: int = Field(foreign_key="assignment.id", index=True)
+    share_token: str = Field(index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class Annotation(SQLModel, table=True):
     """Una anotación dibujada a mano sobre UN video, en un momento específico
     (en segundos, no en número de frame — ver plan-revision-video.md).

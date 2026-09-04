@@ -349,6 +349,7 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 }
 .icon-btn:hover { color: var(--text); background: rgba(255,255,255,0.06); }
 .icon-btn.disabled { opacity: 0.3; pointer-events: none; }
+.icon-btn.active { color: var(--text); background: var(--accent-soft); }
 
 /* Navegación entre revisiones/intentos de video en el link público del
    estudiante — puede haber más de un video por tarea+estudiante. */

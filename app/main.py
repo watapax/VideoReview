@@ -16,7 +16,7 @@ from starlette.responses import RedirectResponse, Response
 from app import storage
 from app.auth import TEACHER_PASSWORD, require_login
 from app.database import engine, init_db
-from app.models import Annotation, Assignment, Course, Grade, RubricAspect, Student, Video, VideoShare
+from app.models import Annotation, Assignment, Course, Grade, ReportShare, RubricAspect, Student, Video, VideoShare
 from app.scoring import SCALE_MAX, SCALE_MIN, band, fmt, weight_display, weighted_average, weights_sum
 from app.seed import seed_defaults, seed_rubric_for_assignment
 
@@ -55,6 +55,20 @@ def get_or_create_share_token(session: Session, assignment_id: int, student_id: 
     if share:
         return share.share_token
     share = VideoShare(assignment_id=assignment_id, student_id=student_id, share_token=secrets.token_urlsafe(16))
+    session.add(share)
+    session.commit()
+    return share.share_token
+
+
+def get_or_create_report_share_token(session: Session, assignment_id: int) -> str:
+    """El link público del informe (/report/{token}) es por TAREA — el informe
+    ya reúne a propósito a todo el curso (ver la intro de report.html), así
+    que no hace falta un token por estudiante. Se crea la primera vez que se
+    pide (botón "Compartir informe"), reutilizando el mismo token después."""
+    share = session.exec(select(ReportShare).where(ReportShare.assignment_id == assignment_id)).first()
+    if share:
+        return share.share_token
+    share = ReportShare(assignment_id=assignment_id, share_token=secrets.token_urlsafe(16))
     session.add(share)
     session.commit()
     return share.share_token
@@ -667,6 +681,77 @@ async def grading_save(assignment_id: int, request: Request):
 
 
 # -------------------------------------------------------------- report ----
+# El informe de una tarea (resumen de notas + feedback por aspecto, de TODO
+# el curso a la vez) se arma igual para el profesor (logueado, con el botón
+# para compartirlo) que para la versión pública sin contraseña — por eso
+# ambas rutas comparten _report_ctx(). En "Resumen de notas finales" cada
+# estudiante que tenga al menos un video en esta tarea muestra además un
+# botón al link público de sus anotaciones de video (mismo mecanismo que
+# get_or_create_share_token, ver arriba).
+
+
+def _report_ctx(session: Session, assignment: Assignment, base_url: str):
+    aspects = session.exec(
+        select(RubricAspect).where(RubricAspect.assignment_id == assignment.id).order_by(RubricAspect.order)
+    ).all()
+    students = session.exec(
+        select(Student)
+        .where(Student.course_id == assignment.course_id, Student.active == True)  # noqa: E712
+        .order_by(Student.name)
+    ).all()
+    grades_all = session.exec(select(Grade).where(Grade.assignment_id == assignment.id)).all()
+    videos_all = session.exec(select(Video).where(Video.assignment_id == assignment.id)).all()
+    students_with_video = {v.student_id for v in videos_all}
+
+    grades_by_student: dict[int, dict[int, Grade]] = {}
+    for g in grades_all:
+        grades_by_student.setdefault(g.student_id, {})[g.aspect_id] = g
+
+    finals: dict[int, float | None] = {}
+    for s in students:
+        pairs = []
+        for a in aspects:
+            g = grades_by_student.get(s.id, {}).get(a.id)
+            pairs.append((g.score if g else None, a.weight))
+        finals[s.id] = weighted_average(pairs)
+
+    ordered_students = sorted(
+        students, key=lambda s: (finals[s.id] is None, -(finals[s.id] or 0), s.name)
+    )
+
+    summary = []
+    for s in ordered_students:
+        grade = finals[s.id]
+        pct = 0.0
+        if grade is not None:
+            pct = max(0.0, min(100.0, (grade - SCALE_MIN) / (SCALE_MAX - SCALE_MIN) * 100))
+        video_url = None
+        if s.id in students_with_video:
+            video_url = base_url + f"/watch/{get_or_create_share_token(session, assignment.id, s.id)}"
+        summary.append(
+            {"name": s.name, "grade_display": fmt(grade), "pct": round(pct, 1), "band": band(grade), "video_url": video_url}
+        )
+
+    aspects_ctx = []
+    for a in aspects:
+        rows = []
+        for s in ordered_students:
+            g = grades_by_student.get(s.id, {}).get(a.id)
+            score = g.score if g else None
+            rows.append(
+                {
+                    "name": s.name,
+                    "score_display": fmt(score) if score is not None else "—",
+                    "band": band(score),
+                    "feedback": g.feedback if g else "",
+                }
+            )
+        aspects_ctx.append(
+            {"name": a.name, "weight_display": weight_display(a.weight), "rows": rows}
+        )
+
+    return summary, aspects_ctx
+
 
 @app.get("/assignments/{assignment_id}/report")
 def report(assignment_id: int, request: Request):
@@ -682,71 +767,61 @@ def report(assignment_id: int, request: Request):
         set_current_course(request, assignment.course_id)
         course, _courses = current_course(session, request)
 
-        aspects = session.exec(
-            select(RubricAspect).where(RubricAspect.assignment_id == assignment.id).order_by(RubricAspect.order)
-        ).all()
-        students = session.exec(
-            select(Student)
-            .where(Student.course_id == assignment.course_id, Student.active == True)  # noqa: E712
-            .order_by(Student.name)
-        ).all()
-        grades_all = session.exec(select(Grade).where(Grade.assignment_id == assignment_id)).all()
+        base_url = str(request.base_url).rstrip("/")
+        summary, aspects_ctx = _report_ctx(session, assignment, base_url)
+        report_share_url = base_url + f"/report/{get_or_create_report_share_token(session, assignment.id)}"
 
-        grades_by_student: dict[int, dict[int, Grade]] = {}
-        for g in grades_all:
-            grades_by_student.setdefault(g.student_id, {})[g.aspect_id] = g
-
-        finals: dict[int, float | None] = {}
-        for s in students:
-            pairs = []
-            for a in aspects:
-                g = grades_by_student.get(s.id, {}).get(a.id)
-                pairs.append((g.score if g else None, a.weight))
-            finals[s.id] = weighted_average(pairs)
-
-        ordered_students = sorted(
-            students, key=lambda s: (finals[s.id] is None, -(finals[s.id] or 0), s.name)
+        # _report_ctx / get_or_create_report_share_token pueden hacer
+        # session.commit() (la primera vez que se crea un token), lo que
+        # expira los atributos ya cargados de assignment/course en esta
+        # sesión — por eso el render de la plantilla queda DENTRO de este
+        # `with`, nunca después de que la sesión se cierre (mismo motivo que
+        # en grading_screen/video_review — ver los comentarios ahí).
+        return templates.TemplateResponse(
+            "report.html",
+            {
+                "request": request,
+                "assignment": assignment,
+                "course": course,
+                "summary": summary,
+                "aspects": aspects_ctx,
+                "scale_min_display": str(int(SCALE_MIN)),
+                "scale_max_display": str(int(SCALE_MAX)),
+                "today": datetime.now().strftime("%d-%m-%Y"),
+                "report_share_url": report_share_url,
+            },
         )
 
-        summary = []
-        for s in ordered_students:
-            grade = finals[s.id]
-            pct = 0.0
-            if grade is not None:
-                pct = max(0.0, min(100.0, (grade - SCALE_MIN) / (SCALE_MAX - SCALE_MIN) * 100))
-            summary.append({"name": s.name, "grade_display": fmt(grade), "pct": round(pct, 1)})
 
-        aspects_ctx = []
-        for a in aspects:
-            rows = []
-            for s in ordered_students:
-                g = grades_by_student.get(s.id, {}).get(a.id)
-                score = g.score if g else None
-                rows.append(
-                    {
-                        "name": s.name,
-                        "score_display": fmt(score) if score is not None else "—",
-                        "band": band(score),
-                        "feedback": g.feedback if g else "",
-                    }
-                )
-            aspects_ctx.append(
-                {"name": a.name, "weight_display": weight_display(a.weight), "rows": rows}
-            )
+@app.get("/report/{share_token}")
+def public_report(share_token: str, request: Request):
+    """Versión de solo lectura del informe, sin contraseña — para que el
+    curso completo lo pueda revisar sin entrar al panel del profesor. Mismo
+    contenido que la vista logueada (ver _report_ctx), sin el botón
+    "Compartir informe" (no tiene sentido re-compartir desde ahí)."""
+    with Session(engine) as session:
+        share = session.exec(select(ReportShare).where(ReportShare.share_token == share_token)).first()
+        assignment = session.get(Assignment, share.assignment_id) if share else None
+        if not assignment:
+            return templates.TemplateResponse("public_not_found.html", {"request": request}, status_code=404)
 
-    return templates.TemplateResponse(
-        "report.html",
-        {
-            "request": request,
-            "assignment": assignment,
-            "course": course,
-            "summary": summary,
-            "aspects": aspects_ctx,
-            "scale_min_display": str(int(SCALE_MIN)),
-            "scale_max_display": str(int(SCALE_MAX)),
-            "today": datetime.now().strftime("%d-%m-%Y"),
-        },
-    )
+        base_url = str(request.base_url).rstrip("/")
+        summary, aspects_ctx = _report_ctx(session, assignment, base_url)
+
+        return templates.TemplateResponse(
+            "report.html",
+            {
+                "request": request,
+                "assignment": assignment,
+                "course": None,
+                "summary": summary,
+                "aspects": aspects_ctx,
+                "scale_min_display": str(int(SCALE_MIN)),
+                "scale_max_display": str(int(SCALE_MAX)),
+                "today": datetime.now().strftime("%d-%m-%Y"),
+                "report_share_url": None,
+            },
+        )
 
 
 # --------------------------------------------------------------- videos ----
