@@ -1,0 +1,9 @@
+# Los videos son tuyos, no del repo -- se quedan solo en tu computador.
+entrada/*
+!entrada/.gitkeep
+salida/*
+!salida/.gitkeep
+convertidos/*
+!convertidos/.gitkeep
+errores/*
+!errores/.gitkeep

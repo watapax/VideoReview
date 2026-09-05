@@ -87,7 +87,7 @@
             <div class="annotation-row" data-id="{{ a.id }}">
               <div class="annotation-dot" style="background:{{ a.color }};"></div>
               <div class="annotation-row-body">
-                <div class="annotation-time">{{ a.time_display }}</div>
+                <div class="annotation-time">{{ a.time_display }}{% if a.is_ranged %} – {{ a.end_time_display }}{% endif %}</div>
                 {% if a.note %}<div class="annotation-note">{{ a.note }}</div>{% endif %}
               </div>
             </div>
@@ -179,7 +179,7 @@
     document.querySelectorAll('.annotation-row').forEach(row => {
       row.classList.toggle('active', id != null && String(row.dataset.id) === String(id));
     });
-    document.querySelectorAll('.annotation-timeline-marker').forEach(m => {
+    document.querySelectorAll('.annotation-timeline-marker, .annotation-timeline-range').forEach(m => {
       m.classList.toggle('active', id != null && String(m.dataset.id) === String(id));
     });
   }
@@ -203,17 +203,29 @@
     redraw();
   }
 
+  // Igual que en video_review.html, pero de solo lectura: sin manijas ni
+  // arrastre, así que no hace falta separar reconstrucción/reposición —
+  // basta con volver a dibujar todo cada vez (aquí solo pasa al cargar).
+  function isRanged(ann) {
+    return ann.end_time_seconds != null && ann.end_time_seconds > ann.time_seconds;
+  }
+
   function buildTimelineMarkers() {
     if (!video.duration || !isFinite(video.duration)) return;
-    timeline.querySelectorAll('.annotation-timeline-marker').forEach(m => m.remove());
+    timeline.querySelectorAll('.annotation-timeline-marker, .annotation-timeline-range').forEach(m => m.remove());
     ANNOTATIONS.forEach(ann => {
       const pct = Math.min(100, Math.max(0, (ann.time_seconds / video.duration) * 100));
+      const ranged = isRanged(ann);
       const marker = document.createElement('div');
-      marker.className = 'annotation-timeline-marker';
+      marker.className = ranged ? 'annotation-timeline-range' : 'annotation-timeline-marker';
       marker.dataset.id = ann.id;
       marker.style.left = pct + '%';
       marker.style.background = ann.color;
-      marker.title = fmtTime(ann.time_seconds);
+      marker.title = ranged ? (fmtTime(ann.time_seconds) + ' – ' + fmtTime(ann.end_time_seconds)) : fmtTime(ann.time_seconds);
+      if (ranged) {
+        const endPct = Math.min(100, Math.max(0, (ann.end_time_seconds / video.duration) * 100));
+        marker.style.width = Math.max(0.6, endPct - pct) + '%';
+      }
       marker.addEventListener('click', e => {
         e.stopPropagation();
         showAnnotation(ann.id);
@@ -264,7 +276,10 @@
   }
 
   timeline.addEventListener('pointerdown', e => {
-    if (e.target.classList.contains('annotation-timeline-marker')) return;
+    if (
+      e.target.classList.contains('annotation-timeline-marker') ||
+      e.target.classList.contains('annotation-timeline-range')
+    ) return;
     scrubbing = true;
     wasPlayingBeforeScrub = !video.paused;
     if (wasPlayingBeforeScrub) video.pause();

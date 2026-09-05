@@ -278,7 +278,45 @@ su nombre de archivo; y renombrar un video actualiza el nombre al
 guardar, cancelar no guarda nada, y ninguna de las dos acciones crea o
 elimina videos.
 
+### Fase 8 — Marcadores con duración
+
+- **Las anotaciones ahora pueden durar más de un instante.** Antes cada
+  anotación era un solo punto en el tiempo (el rombo de la línea de
+  tiempo). Ahora, al seleccionar una anotación — haciendo clic en ella
+  desde la lista o desde su marcador en la línea de tiempo — aparecen dos
+  manijas (izquierda = inicio, derecha = fin) que se pueden arrastrar para
+  estirarla. En cuanto se arrastra cualquiera de las dos, el rombo se
+  convierte en una barra de color que muestra a simple vista cuánto dura.
+  Las manijas solo existen para la anotación seleccionada — al elegir
+  otra, las anteriores desaparecen de inmediato, así nunca se ven dos
+  pares de manijas a la vez, ni siquiera si los rangos de dos anotaciones
+  se cruzan en el tiempo.
+- El cambio de duración se guarda solo (sin recargar la página) apenas se
+  suelta la manija. Si el rango termina siendo casi nulo (menos de un
+  cuadro, arrastraste las dos manijas casi al mismo punto), vuelve a
+  quedar como una anotación puntual normal.
+- La lista de anotaciones de la derecha muestra el rango completo
+  ("0:02 – 0:05") en vez de un solo momento cuando la anotación tiene
+  duración, tanto en la pantalla de corrección como en el link público de
+  solo lectura que ve el estudiante (ahí se ve la barra igual, pero sin
+  manijas — no se puede editar).
+- Antes de tocar el código real de la app, se armó un preview interactivo
+  aparte (fuera de este repo) para poder probar la idea e iterar el
+  comportamiento exacto de las manijas antes de programarlo — incluyendo
+  un bug real que apareció ahí (arrastrar se cortaba después del primer
+  pixel de movimiento) y que quedó resuelto tanto en el preview como acá:
+  la clave es nunca reconstruir los elementos de la línea de tiempo
+  mientras se está arrastrando una manija, solo reposicionarlos.
+
+Probado con Playwright: seleccionar una anotación puntual muestra
+exactamente 2 manijas y ninguna otra anotación las tiene; arrastrar la
+manija de fin la convierte en un rango con barra, y el cambio persiste al
+recargar la página (se guardó de verdad, no solo en el navegador);
+seleccionar otra anotación oculta las manijas de la primera; arrastrar una
+manija más allá del final del video queda acotado a la duración real; y un
+rango casi nulo se vuelve a guardar como anotación puntual.
+
 ## Qué falta
 
-Nada pendiente de esta función por ahora — las siete fases están
-completas y probadas.
+Nada pendiente de esta función por ahora — las ocho fases están completas
+y probadas.

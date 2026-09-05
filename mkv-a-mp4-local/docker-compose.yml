@@ -1,0 +1,21 @@
+services:
+  mkv-a-mp4:
+    build: .
+    container_name: mkv-a-mp4-local
+    restart: unless-stopped
+    volumes:
+      - ./entrada:/data/entrada
+      - ./salida:/data/salida
+      - ./convertidos:/data/convertidos
+      - ./errores:/data/errores
+    environment:
+      # Cada cuántos segundos revisa la carpeta 'entrada' por archivos
+      # nuevos.
+      - POLL_SECONDS=2
+      # Solo se usan si hace falta recodificar de verdad (el remux rápido
+      # no los toca). CRF más bajo = más calidad y más peso (18-20 se ve
+      # prácticamente igual al original; 23 es el valor por defecto de
+      # ffmpeg, más liviano). PRESET más lento = mejor compresión pero
+      # tarda más: ultrafast, fast, medium, slow.
+      - CRF=20
+      - PRESET=medium

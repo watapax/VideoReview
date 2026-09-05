@@ -103,7 +103,13 @@ contenedor.
   (del color de esa anotación). Al hacer clic en un marcador o en una
   anotación de la lista, el video salta directo a ese momento, vuelve a
   mostrar el dibujo guardado encima, y la anotación queda resaltada tanto
-  en la lista como en la línea de tiempo.
+  en la lista como en la línea de tiempo. Una anotación también puede
+  durar más de un instante: al seleccionarla aparecen dos manijas (inicio
+  y fin) en la línea de tiempo para estirarla — se convierte en una barra
+  de color en vez de un rombo, y el cambio se guarda solo al soltar. Las
+  manijas solo se ven en la anotación seleccionada; al elegir otra
+  desaparecen, así nunca hay dos pares a la vez aunque los rangos se
+  crucen en el tiempo.
 - **Compartir con el estudiante** (botón "Compartir" en la pantalla de
   anotar, o "Compartir con [estudiante]" en la pestaña Videos): copia un
   link público al portapapeles. Es un solo link por tarea + estudiante —

@@ -124,13 +124,18 @@ class Annotation(SQLModel, table=True):
     respecto al tamaño del video) en vez de una imagen — así se ve nítido
     sin importar el tamaño de pantalla donde se reproduzca.
 
-    Igual que Video, es una tabla nueva: no necesita su propia función de
-    migración, basta con que init_db() la cree vía metadata.create_all().
+    `end_time_seconds` es opcional: None significa una anotación "puntual"
+    (un solo instante, comportamiento original). Cuando tiene un valor,
+    la anotación dura desde time_seconds hasta end_time_seconds, y se
+    muestra como una barra (no un rombo) en la línea de tiempo, con
+    manejadores para estirarla — ver _migrate_add_annotation_range() en
+    database.py, que agrega esta columna a instalaciones ya existentes.
     """
 
     id: Optional[int] = Field(default=None, primary_key=True)
     video_id: int = Field(foreign_key="video.id", index=True)
     time_seconds: float = 0.0
+    end_time_seconds: Optional[float] = None
     color: str = "#5b7cfa"
     stroke_width: float = 4.0
     drawing_data: str = "{}"

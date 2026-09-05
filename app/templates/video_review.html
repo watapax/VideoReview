@@ -105,7 +105,7 @@
         <div class="annotation-row" data-id="{{ a.id }}">
           <div class="annotation-dot" style="background:{{ a.color }};"></div>
           <div class="annotation-row-body">
-            <div class="annotation-time">{{ a.time_display }}</div>
+            <div class="annotation-time">{{ a.time_display }}{% if a.is_ranged %} – {{ a.end_time_display }}{% endif %}</div>
             {% if a.note %}<div class="annotation-note">{{ a.note }}</div>{% endif %}
           </div>
           <div class="annotation-row-actions">
@@ -264,9 +264,16 @@
     document.querySelectorAll('.annotation-row').forEach(row => {
       row.classList.toggle('active', id != null && String(row.dataset.id) === String(id));
     });
-    document.querySelectorAll('.annotation-timeline-marker').forEach(m => {
-      m.classList.toggle('active', id != null && String(m.dataset.id) === String(id));
-    });
+  }
+
+  // Actualiza solo el texto de hora/duración de una fila de la lista tras
+  // arrastrar una manija — evita recargar la página por un cambio de rango.
+  function updateAnnotationRowTime(ann) {
+    const row = document.querySelector('.annotation-row[data-id="' + ann.id + '"] .annotation-time');
+    if (!row) return;
+    row.textContent = isRanged(ann)
+      ? fmtClock(ann.time_seconds) + ' – ' + fmtClock(ann.end_time_seconds)
+      : fmtClock(ann.time_seconds);
   }
 
   // Salta el video al momento de la anotación `id` y vuelve a dibujar su
@@ -279,6 +286,7 @@
     if (creating) exitCreating();
     shownAnnotationId = id;
     highlightRow(id);
+    renderMarkers();
     // Si el video ya está exactamente en ese segundo, cambiar currentTime no
     // dispara 'seeked' — no hay que esperar (ni suprimir) ese evento.
     suppressSeekClear = Math.abs(video.currentTime - ann.time_seconds) > 0.01;
@@ -292,27 +300,185 @@
     if (shownAnnotationId == null) return;
     shownAnnotationId = null;
     highlightRow(null);
+    renderMarkers();
     redraw();
   }
 
-  function buildTimelineMarkers() {
+  // ---- Marcadores de la línea de tiempo (fase 8: con duración) --------
+  // Una anotación es "puntual" (rombo) mientras end_time_seconds sea null;
+  // pasa a ser "con rango" (barra) apenas tiene un end_time_seconds mayor
+  // que su time_seconds. Solo la anotación seleccionada (shownAnnotationId)
+  // muestra sus dos manijas de arrastre — al seleccionar otra, las
+  // anteriores desaparecen, así nunca hay dos pares a la vez ni aunque dos
+  // rangos se crucen en el tiempo.
+  function isRanged(ann) {
+    return ann.end_time_seconds != null && ann.end_time_seconds > ann.time_seconds;
+  }
+
+  function pctFromTime(t) {
+    if (!video.duration || !isFinite(video.duration)) return 0;
+    return Math.min(100, Math.max(0, (t / video.duration) * 100));
+  }
+
+  // id -> { mainEl, handleStart, handleEnd } de los elementos YA creados en
+  // el DOM. Se usa para poder reposicionar sin reconstruir (ver
+  // repositionMarker) durante un arrastre de manija.
+  let markerEls = {};
+
+  // Reconstrucción completa de los marcadores: se llama SOLO cuando cambia
+  // qué elementos hay que mostrar (se selecciona/deselecciona una
+  // anotación, se cargan/actualizan datos) — NUNCA durante un arrastre de
+  // manija. Si se llamara ahí, destruiría y volvería a crear la manija que
+  // el usuario tiene agarrada: el navegador suelta la captura del puntero
+  // apenas ese elemento sale del DOM, y el arrastre se corta después del
+  // primer pixel de movimiento (bug ya visto y corregido en el preview de
+  // esta función — ver repositionMarker más abajo, que es la que sí es
+  // segura de llamar en cada pointermove).
+  function renderMarkers() {
     if (!video.duration || !isFinite(video.duration)) return;
-    timeline.querySelectorAll('.annotation-timeline-marker').forEach(m => m.remove());
+    timeline.querySelectorAll(
+      '.annotation-timeline-marker, .annotation-timeline-range, .annotation-timeline-handle, .annotation-timeline-handle-tooltip'
+    ).forEach(el => el.remove());
+    markerEls = {};
+
     ANNOTATIONS.forEach(ann => {
-      const pct = Math.min(100, Math.max(0, (ann.time_seconds / video.duration) * 100));
-      const marker = document.createElement('div');
-      marker.className = 'annotation-timeline-marker';
-      marker.dataset.id = ann.id;
-      marker.style.left = pct + '%';
-      marker.style.background = ann.color;
-      marker.title = fmtTime(ann.time_seconds);
-      marker.addEventListener('click', e => {
+      const selected = ann.id === shownAnnotationId;
+      const mainEl = document.createElement('div');
+      mainEl.dataset.id = ann.id;
+      mainEl.addEventListener('click', e => {
         e.stopPropagation();
         showAnnotation(ann.id);
       });
-      timeline.appendChild(marker);
+      timeline.appendChild(mainEl);
+
+      const rec = { mainEl, handleStart: null, handleEnd: null };
+      markerEls[ann.id] = rec;
+
+      if (selected) {
+        rec.handleStart = createHandle(ann, 'start');
+        rec.handleEnd = createHandle(ann, 'end');
+        timeline.appendChild(rec.handleStart);
+        timeline.appendChild(rec.handleEnd);
+      }
+      repositionMarker(ann);
     });
-    highlightRow(shownAnnotationId);
+  }
+
+  // Actualiza solo posición/ancho/clase de los elementos que YA existen de
+  // una anotación — nunca quita ni reemplaza nodos del DOM, así es segura
+  // de llamar en cada pointermove de un arrastre de manija.
+  function repositionMarker(ann) {
+    const rec = markerEls[ann.id];
+    if (!rec) return;
+    const ranged = isRanged(ann);
+    const selected = ann.id === shownAnnotationId;
+
+    rec.mainEl.className = (ranged ? 'annotation-timeline-range' : 'annotation-timeline-marker') + (selected ? ' active' : '');
+    rec.mainEl.style.background = ann.color;
+    rec.mainEl.title = ranged ? (fmtTime(ann.time_seconds) + ' – ' + fmtTime(ann.end_time_seconds)) : fmtTime(ann.time_seconds);
+    rec.mainEl.style.left = pctFromTime(ann.time_seconds) + '%';
+    rec.mainEl.style.width = ranged
+      ? Math.max(0.6, pctFromTime(ann.end_time_seconds) - pctFromTime(ann.time_seconds)) + '%'
+      : '';
+
+    if (rec.handleStart && rec.handleEnd) {
+      const endVal = ann.end_time_seconds != null ? ann.end_time_seconds : ann.time_seconds;
+      const nudge = ranged ? 0 : 4; // separa visualmente las 2 manijas si todavía son el mismo punto
+      rec.handleStart.style.left = 'calc(' + pctFromTime(ann.time_seconds) + '% - ' + nudge + 'px)';
+      rec.handleEnd.style.left = 'calc(' + pctFromTime(endVal) + '% + ' + nudge + 'px)';
+    }
+  }
+
+  function createHandle(ann, side) {
+    const handle = document.createElement('div');
+    handle.className = 'annotation-timeline-handle';
+    handle.style.background = ann.color;
+    handle.title = side === 'start' ? 'Manija de inicio' : 'Manija de fin';
+    handle.addEventListener('pointerdown', e => {
+      e.stopPropagation();
+      startHandleDrag(e, ann, side, handle);
+    });
+    return handle;
+  }
+
+  // Un cuadro a 24fps: mismo umbral mínimo que MIN_ANNOTATION_RANGE_SECONDS
+  // en main.py — por debajo de esto, el servidor vuelve a guardar la
+  // anotación como puntual en vez de con un rango casi invisible.
+  const MIN_ANNOTATION_RANGE_SECONDS = 1 / 24;
+
+  function timeFromPointer(e) {
+    if (!video.duration || !isFinite(video.duration)) return 0;
+    return pctFromPointer(e) * video.duration;
+  }
+
+  function persistAnnotationRange(ann) {
+    fetch('/annotations/' + ann.id + '/range', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        start: ann.time_seconds,
+        end: ann.end_time_seconds != null ? ann.end_time_seconds : ann.time_seconds,
+      }),
+    })
+      .then(r => { if (!r.ok) throw new Error('status ' + r.status); return r.json(); })
+      .then(data => {
+        // El servidor puede normalizar (por ej. colapsar un rango casi nulo
+        // de vuelta a puntual) — se refleja el valor ya normalizado, no el
+        // que se calculó localmente durante el arrastre.
+        ann.time_seconds = data.time_seconds;
+        ann.end_time_seconds = data.end_time_seconds;
+        repositionMarker(ann);
+        updateAnnotationRowTime(ann);
+      })
+      .catch(() => {
+        alert('No se pudo guardar el cambio de duración — intenta de nuevo.');
+        renderMarkers();
+      });
+  }
+
+  function startHandleDrag(e, ann, side, handleEl) {
+    handleEl.setPointerCapture(e.pointerId);
+    handleEl.classList.add('dragging');
+    let moved = false;
+
+    const tooltip = document.createElement('div');
+    tooltip.className = 'annotation-timeline-handle-tooltip';
+    timeline.appendChild(tooltip);
+
+    function updateTooltip() {
+      const endVal = ann.end_time_seconds != null ? ann.end_time_seconds : ann.time_seconds;
+      tooltip.style.left = pctFromTime(side === 'start' ? ann.time_seconds : endVal) + '%';
+      tooltip.textContent = isRanged(ann) ? (fmtTime(ann.time_seconds) + ' – ' + fmtTime(endVal)) : fmtTime(ann.time_seconds);
+    }
+    updateTooltip();
+
+    function onMove(ev) {
+      moved = true;
+      const duration = video.duration && isFinite(video.duration) ? video.duration : ann.end_time_seconds || ann.time_seconds;
+      const t = Math.max(0, Math.min(duration, timeFromPointer(ev)));
+      if (side === 'start') {
+        const endVal = ann.end_time_seconds != null ? ann.end_time_seconds : ann.time_seconds;
+        ann.time_seconds = Math.max(0, Math.min(t, endVal - MIN_ANNOTATION_RANGE_SECONDS));
+        ann.end_time_seconds = endVal;
+      } else {
+        ann.end_time_seconds = Math.min(duration, Math.max(t, ann.time_seconds + MIN_ANNOTATION_RANGE_SECONDS));
+      }
+      // Solo reposiciona -- NUNCA renderMarkers() acá, ver el comentario en
+      // esa función sobre por qué eso rompía el arrastre.
+      repositionMarker(ann);
+      updateTooltip();
+    }
+    function onUp() {
+      handleEl.classList.remove('dragging');
+      handleEl.removeEventListener('pointermove', onMove);
+      handleEl.removeEventListener('pointerup', onUp);
+      handleEl.removeEventListener('pointercancel', onUp);
+      tooltip.remove();
+      if (moved) persistAnnotationRange(ann);
+    }
+    handleEl.addEventListener('pointermove', onMove);
+    handleEl.addEventListener('pointerup', onUp);
+    handleEl.addEventListener('pointercancel', onUp);
   }
 
   function updatePlayhead() {
@@ -366,7 +532,11 @@
   }
 
   timeline.addEventListener('pointerdown', e => {
-    if (e.target.classList.contains('annotation-timeline-marker')) return;
+    if (
+      e.target.classList.contains('annotation-timeline-marker') ||
+      e.target.classList.contains('annotation-timeline-range') ||
+      e.target.classList.contains('annotation-timeline-handle')
+    ) return;
     scrubbing = true;
     wasPlayingBeforeScrub = !video.paused;
     if (wasPlayingBeforeScrub) video.pause();
@@ -683,6 +853,7 @@
 
     shownAnnotationId = null;
     highlightRow(ann.id);
+    renderMarkers();
 
     selectColorAndWidth(ann.color, ann.stroke_width || selectedWidth);
     fieldTime.value = ann.time_seconds;
@@ -742,7 +913,7 @@
 
   function onVideoReady() {
     resizeCanvas();
-    buildTimelineMarkers();
+    renderMarkers();
     updatePlayhead();
     syncPlayPauseIcon();
     syncMuteIcon();

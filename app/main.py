@@ -11,10 +11,10 @@ from fastapi.templating import Jinja2Templates
 from sqlmodel import Session, select
 from starlette.concurrency import run_in_threadpool
 from starlette.middleware.sessions import SessionMiddleware
-from starlette.responses import RedirectResponse, Response
+from starlette.responses import JSONResponse, RedirectResponse, Response
 
 from app import storage
-from app.auth import TEACHER_PASSWORD, require_login
+from app.auth import TEACHER_PASSWORD, is_logged_in, require_login
 from app.database import engine, init_db
 from app.models import Annotation, Assignment, Course, Grade, ReportShare, RubricAspect, Student, Video, VideoShare
 from app.scoring import SCALE_MAX, SCALE_MIN, band, fmt, weight_display, weighted_average, weights_sum
@@ -1053,6 +1053,8 @@ def video_review(video_id: int, request: Request):
             {
                 "id": a.id,
                 "time_display": fmt_time_mmss(a.time_seconds),
+                "is_ranged": a.end_time_seconds is not None and a.end_time_seconds > a.time_seconds,
+                "end_time_display": fmt_time_mmss(a.end_time_seconds) if a.end_time_seconds is not None else None,
                 "color": a.color if a.color in ALLOWED_ANNOTATION_COLORS else "#5b7cfa",
                 "note": a.note,
             }
@@ -1068,12 +1070,14 @@ def video_review(video_id: int, request: Request):
         # note y stroke_width se incluyen (además de lo que ya se usaba para
         # mostrar el trazo guardado) porque el modo "editar" de una anotación
         # los precarga en el formulario sin tener que pedirlos de nuevo al
-        # servidor.
+        # servidor. end_time_seconds va en null cuando la anotación es
+        # puntual (comportamiento original, sin duración).
         annotations_json = json.dumps(
             [
                 {
                     "id": a.id,
                     "time_seconds": a.time_seconds,
+                    "end_time_seconds": a.end_time_seconds,
                     "color": a.color if a.color in ALLOWED_ANNOTATION_COLORS else "#5b7cfa",
                     "stroke_width": a.stroke_width,
                     "drawing_data": a.drawing_data,
@@ -1239,6 +1243,62 @@ def annotation_delete(annotation_id: int, request: Request):
     return RedirectResponse(url=f"/videos/{video_id}?msg=Anotación eliminada.", status_code=303)
 
 
+# Duración mínima que se acepta para considerar una anotación "con rango":
+# por debajo de esto (arrastraste los dos manejadores casi al mismo punto) se
+# guarda como puntual de nuevo, para no dejar barras invisibles de 0.02s.
+MIN_ANNOTATION_RANGE_SECONDS = 1 / 24  # un cuadro a 24fps, mismo criterio que el preview
+
+
+@app.post("/annotations/{annotation_id}/range")
+async def annotation_set_range(annotation_id: int, request: Request):
+    """Actualiza el rango (inicio/fin) de una anotación ya creada, al soltar
+    uno de los manejadores de la línea de tiempo. Es la única edición de
+    anotaciones que se hace por AJAX (fetch), no por un <form> normal —
+    porque arrastrar un manejador no debería recargar la página ni perder el
+    estado de reproducción/selección — así que responde JSON en vez de
+    redirigir, y usa is_logged_in() en vez de require_login() (que
+    redirigiría a /login, algo sin sentido para una llamada fetch).
+    """
+    if not is_logged_in(request):
+        return JSONResponse({"error": "no autenticado"}, status_code=401)
+
+    try:
+        body = await request.json()
+    except (json.JSONDecodeError, ValueError):
+        return JSONResponse({"error": "cuerpo inválido"}, status_code=400)
+
+    with Session(engine) as session:
+        ann = session.get(Annotation, annotation_id)
+        if not ann:
+            return JSONResponse({"error": "esa anotación no existe"}, status_code=404)
+
+        try:
+            start = max(0.0, float(body.get("start")))
+            end = max(0.0, float(body.get("end")))
+        except (TypeError, ValueError):
+            return JSONResponse({"error": "start/end inválidos"}, status_code=400)
+
+        if end < start:
+            start, end = end, start
+
+        ann.time_seconds = start
+        ann.end_time_seconds = end if (end - start) >= MIN_ANNOTATION_RANGE_SECONDS else None
+        session.add(ann)
+        session.commit()
+        session.refresh(ann)
+
+        return JSONResponse(
+            {
+                "id": ann.id,
+                "time_seconds": ann.time_seconds,
+                "end_time_seconds": ann.end_time_seconds,
+                "time_display": fmt_time_mmss(ann.time_seconds),
+                "end_time_display": fmt_time_mmss(ann.end_time_seconds) if ann.end_time_seconds is not None else None,
+                "is_ranged": ann.end_time_seconds is not None,
+            }
+        )
+
+
 # ------------------------------------------------------- link público -----
 # El profesor comparte /watch/{share_token} con un estudiante para que vea
 # sus anotaciones sin entrar al panel de notas y tareas (no pide contraseña
@@ -1305,6 +1365,8 @@ def public_review(share_token: str, request: Request):
             {
                 "id": a.id,
                 "time_display": fmt_time_mmss(a.time_seconds),
+                "is_ranged": a.end_time_seconds is not None and a.end_time_seconds > a.time_seconds,
+                "end_time_display": fmt_time_mmss(a.end_time_seconds) if a.end_time_seconds is not None else None,
                 "color": a.color if a.color in ALLOWED_ANNOTATION_COLORS else "#5b7cfa",
                 "note": a.note,
             }
@@ -1315,6 +1377,7 @@ def public_review(share_token: str, request: Request):
                 {
                     "id": a.id,
                     "time_seconds": a.time_seconds,
+                    "end_time_seconds": a.end_time_seconds,
                     "color": a.color if a.color in ALLOWED_ANNOTATION_COLORS else "#5b7cfa",
                     "drawing_data": a.drawing_data,
                 }

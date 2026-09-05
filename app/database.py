@@ -118,10 +118,32 @@ def _migrate_rubric_to_assignments() -> None:
         conn.close()
 
 
+def _migrate_add_annotation_range() -> None:
+    """Migración: agrega end_time_seconds a annotation (marcadores con duración).
+
+    Instalaciones existentes ya tienen la tabla annotation sin esta columna;
+    metadata.create_all() no la agrega sola a una tabla que ya existe. Segura
+    de correr en cada arranque: si ya está migrada, no hace nada. Las filas
+    existentes quedan con end_time_seconds NULL, es decir, siguen siendo
+    anotaciones puntuales (comportamiento sin cambios).
+    """
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        cur = conn.cursor()
+        if not _table_exists(cur, "annotation"):
+            return
+        if not _column_exists(cur, "annotation", "end_time_seconds"):
+            cur.execute("ALTER TABLE annotation ADD COLUMN end_time_seconds REAL")
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def init_db() -> None:
     SQLModel.metadata.create_all(engine)
     _migrate_add_courses()
     _migrate_rubric_to_assignments()
+    _migrate_add_annotation_range()
 
 
 def get_session():
