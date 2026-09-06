@@ -5,12 +5,16 @@
 <div style="display:flex; align-items:center; margin-bottom:18px;">
   <h1 style="margin:0; font-size:20px;">Tareas</h1>
   <div style="flex-grow:1;"></div>
-  <a class="btn" href="/assignments/new">+ Nueva tarea</a>
+  {% if can_edit %}<a class="btn" href="/assignments/new">+ Nueva tarea</a>{% endif %}
 </div>
 
 {% if not assignments %}
   <div class="card" style="text-align:center; color:var(--muted);">
-    Todavía no tienes tareas creadas. <a href="/assignments/new">Crea la primera</a>.
+    {% if can_edit %}
+      Todavía no tienes tareas creadas. <a href="/assignments/new">Crea la primera</a>.
+    {% else %}
+      Este curso todavía no tiene tareas.
+    {% endif %}
   </div>
 {% else %}
   <div class="card" style="padding:0;">

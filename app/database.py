@@ -139,11 +139,35 @@ def _migrate_add_annotation_range() -> None:
         conn.close()
 
 
+def _migrate_add_course_owner() -> None:
+    """Migración: agrega owner_teacher_id a course (cuentas por docente).
+
+    Instalaciones existentes tienen cursos sin dueño (antes solo existía un
+    profesor con una contraseña única, sin cuentas). Esta migración solo
+    agrega la columna, vacía (NULL) para los cursos que ya existían — el
+    primer docente que se registra en /signup adopta esos cursos huérfanos
+    (ver la ruta /signup en main.py), no esta función: acá todavía no existe
+    ningún Teacher la primera vez que corre. Segura de correr en cada
+    arranque: si ya está migrada, no hace nada.
+    """
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        cur = conn.cursor()
+        if not _table_exists(cur, "course"):
+            return
+        if not _column_exists(cur, "course", "owner_teacher_id"):
+            cur.execute("ALTER TABLE course ADD COLUMN owner_teacher_id INTEGER")
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def init_db() -> None:
     SQLModel.metadata.create_all(engine)
     _migrate_add_courses()
     _migrate_rubric_to_assignments()
     _migrate_add_annotation_range()
+    _migrate_add_course_owner()
 
 
 def get_session():

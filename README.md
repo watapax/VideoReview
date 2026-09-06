@@ -14,8 +14,9 @@ sea fácil moverla más adelante a un servidor/VPS real sin rehacer nada.
 
 ## Cómo correrla en tu computador
 
-1. Copia `.env.example` a `.env` y cambia `TEACHER_PASSWORD` por una
-   contraseña propia (es la única que se pide para entrar a la app).
+1. Copia `.env.example` a `.env` y cambia `TEACHER_PASSWORD` por un código
+   de invitación propio (no es la contraseña de nadie para entrar día a
+   día — ver "Cuentas de docente" más abajo).
 
    ```
    cp .env.example .env
@@ -27,8 +28,9 @@ sea fácil moverla más adelante a un servidor/VPS real sin rehacer nada.
    docker compose up -d
    ```
 
-3. Abre <http://localhost:8000> en el navegador y entra con la contraseña
-   que pusiste en `.env`.
+3. Abre <http://localhost:8000> en el navegador y crea tu cuenta desde
+   "Crea tu cuenta de docente" en la pantalla de ingreso, usando el código
+   de invitación que pusiste en `.env`.
 
 4. Para detenerla:
 
@@ -40,6 +42,31 @@ Tus datos (rúbrica, estudiantes, tareas, notas y feedback) quedan
 guardados en la carpeta `data/` como un archivo SQLite. Mientras no borres
 esa carpeta, la información persiste aunque apagues y prendas el
 contenedor.
+
+## Cuentas de docente
+
+Cada docente tiene su propia cuenta (nombre + contraseña, creada desde
+"Crea tu cuenta de docente" en el login) — así varios pueden usar la misma
+app, cada uno con sus propios cursos. Para crear una cuenta hace falta el
+código de invitación (`TEACHER_PASSWORD` en `.env`): pásaselo a quien
+quieras invitar, no es necesario compartir tu contraseña.
+
+Todos los docentes VEN los cursos de todos (útil para revisar entre
+colegas), pero **solo el dueño de un curso puede editarlo** — renombrarlo,
+agregar tareas o estudiantes, poner notas, subir videos o anotar. Un curso
+de otro docente se ve igual que el tuyo, pero sin los botones de editar, y
+con un aviso de quién es su dueño.
+
+Cada vez que alguien crea su cuenta, la app le arma automáticamente un
+curso propio en blanco ("Mi curso"), sin estudiantes ni tareas, listo para
+que le cambie el nombre y agregue sus alumnos — nadie hereda cursos ni
+datos de otro docente al registrarse.
+
+Si ya tenías cursos cargados de antes de que existieran las cuentas, no se
+pierden ni se le asignan a nadie automáticamente: quedan visibles para
+todos y cualquier docente logueado los puede editar hasta que alguien los
+reclame (por ejemplo, renombrándolos o agregándoles algo) — desde ahí
+quedan a su nombre.
 
 ## Qué incluye por ahora
 

@@ -58,18 +58,22 @@
               <input type="number" step="0.1" min="{{ scale_min }}" max="{{ scale_max }}"
                      name="score_{{ a.id }}" class="aspect-score" data-weight="{{ a.weight }}"
                      value="{{ grades.get(a.id).score if grades.get(a.id) and grades.get(a.id).score is not none else '' }}"
-                     placeholder="{{ scale_min_display }}–{{ scale_max_display }}">
+                     placeholder="{{ scale_min_display }}–{{ scale_max_display }}" {{ 'readonly' if not can_edit else '' }}>
             </div>
-            <textarea name="feedback_{{ a.id }}" placeholder="Feedback para este aspecto…">{{ grades.get(a.id).feedback if grades.get(a.id) else '' }}</textarea>
+            <textarea name="feedback_{{ a.id }}" placeholder="Feedback para este aspecto…" {{ 'readonly' if not can_edit else '' }}>{{ grades.get(a.id).feedback if grades.get(a.id) else '' }}</textarea>
           </div>
           {% endfor %}
         </div>
 
         <div class="bottom-bar">
+          {% if can_edit %}
           <div class="saved-note" id="saved-note"></div>
           <button type="submit" class="btn secondary">Guardar</button>
           {% if next_student %}
           <button type="submit" formaction="/assignments/{{ assignment.id }}/grade?student_id={{ current.id }}&next={{ next_student.id }}" class="btn">Guardar y siguiente →</button>
+          {% endif %}
+          {% else %}
+          <span class="hint" style="margin:0;">Solo el dueño de este curso puede calificar.</span>
           {% endif %}
         </div>
       </form>
@@ -100,27 +104,34 @@
           <div class="video-card-body">
             <div class="video-card-title-row" id="video-title-row-{{ v.id }}">
               <div class="video-card-title">{{ v.label }}</div>
+              {% if can_edit %}
               <button type="button" class="icon-btn small rename-video-btn" data-video-id="{{ v.id }}" title="Cambiar nombre">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
               </button>
+              {% endif %}
             </div>
+            {% if can_edit %}
             <form method="post" action="/videos/{{ v.id }}/rename" class="video-rename-form" id="rename-form-{{ v.id }}" hidden>
               <input type="text" name="label" value="{{ v.label }}" maxlength="60" required class="video-rename-input">
               <button type="submit" class="btn secondary" style="padding:5px 9px;">Guardar</button>
               <button type="button" class="btn secondary rename-cancel-btn" data-video-id="{{ v.id }}" style="padding:5px 9px;">Cancelar</button>
             </form>
+            {% endif %}
             <div class="video-card-meta">
               {{ v.size_display }}{% if v.size_display %} · {% endif %}subido {{ v.uploaded_display }}
               {% if v.annotation_count %} · {{ v.annotation_count }} anotación{{ 'es' if v.annotation_count != 1 else '' }}{% endif %}
             </div>
-            <a href="/videos/{{ v.id }}" class="btn" style="width:100%; justify-content:center; margin-bottom:8px;">Anotar</a>
+            <a href="/videos/{{ v.id }}" class="btn" style="width:100%; justify-content:center; margin-bottom:8px;">{{ 'Anotar' if can_edit else 'Ver anotaciones' }}</a>
+            {% if can_edit %}
             <form method="post" action="/videos/{{ v.id }}/delete" onsubmit="return confirm('¿Eliminar este video? No se puede deshacer.');">
               <button type="submit" class="btn secondary" style="width:100%;">Eliminar</button>
             </form>
+            {% endif %}
           </div>
         </div>
         {% endfor %}
 
+        {% if can_edit %}
         <form method="post" action="/assignments/{{ assignment.id }}/videos?student_id={{ current.id }}" enctype="multipart/form-data" class="video-upload-card" id="video-upload-form">
           <div style="width:40px; height:40px; border-radius:50%; background:var(--input-bg); display:flex; align-items:center; justify-content:center; margin:0 auto;">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 8l5-5 5 5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
@@ -130,6 +141,7 @@
           <button type="submit" class="btn" id="video-upload-submit">Subir video</button>
           <div class="video-upload-hint" id="video-upload-hint">Solo .mp4 — puedes elegir varios a la vez, o arrastrarlos aquí</div>
         </form>
+        {% endif %}
       </div>
     </div>
 

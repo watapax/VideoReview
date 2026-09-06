@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Crear cuenta · Corrección de Animación</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="login-wrap">
+    <div class="card login-card">
+      <h2 style="margin-top:0;">Crear cuenta de docente</h2>
+      <p class="muted">Cada docente tiene su propia cuenta: ve los cursos de
+        todos, pero solo puede editar los suyos.</p>
+      {% if error %}<div class="flash" style="border-color:#e88a6a;">{{ error }}</div>{% endif %}
+      <form method="post" action="/signup">
+        <div class="field">
+          <label for="name">Tu nombre</label>
+          <input type="text" id="name" name="name" autofocus required value="{{ name or '' }}">
+        </div>
+        <div class="field">
+          <label for="password">Contraseña</label>
+          <input type="password" id="password" name="password" required minlength="4">
+        </div>
+        <div class="field">
+          <label for="invite_code">Código de invitación</label>
+          <input type="password" id="invite_code" name="invite_code" required>
+          <p class="hint">Te lo pasa quien administra la app (es la contraseña
+            que se configuró en el servidor para poder crear cuentas nuevas).</p>
+        </div>
+        <button class="btn" type="submit" style="width:100%; justify-content:center;">Crear cuenta</button>
+      </form>
+      <p class="muted" style="margin-bottom:0;">
+        ¿Ya tienes cuenta? <a href="/login">Inicia sesión</a>.
+      </p>
+    </div>
+  </div>
+</body>
+</html>

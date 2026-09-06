@@ -14,9 +14,20 @@ from starlette.middleware.sessions import SessionMiddleware
 from starlette.responses import JSONResponse, RedirectResponse, Response
 
 from app import storage
-from app.auth import TEACHER_PASSWORD, is_logged_in, require_login
+from app.auth import TEACHER_PASSWORD, hash_password, is_logged_in, require_login, verify_password
 from app.database import engine, init_db
-from app.models import Annotation, Assignment, Course, Grade, ReportShare, RubricAspect, Student, Video, VideoShare
+from app.models import (
+    Annotation,
+    Assignment,
+    Course,
+    Grade,
+    ReportShare,
+    RubricAspect,
+    Student,
+    Teacher,
+    Video,
+    VideoShare,
+)
 from app.scoring import SCALE_MAX, SCALE_MIN, band, fmt, weight_display, weighted_average, weights_sum
 from app.seed import seed_defaults, seed_rubric_for_assignment
 
@@ -81,6 +92,21 @@ app.mount("/static", StaticFiles(directory=os.path.join(APP_DIR, "static")), nam
 templates = Jinja2Templates(directory=os.path.join(APP_DIR, "templates"))
 
 
+def _teacher_display_name(teacher_id):
+    """Helper expuesto a los templates (ver base.html) para mostrar de quién
+    es un curso sin tener que agregar esa consulta en cada ruta que lo
+    renderiza — abre su propia sesión corta, ya que para cuando Jinja
+    renderiza la sesión de la ruta ya se cerró."""
+    if teacher_id is None:
+        return None
+    with Session(engine) as session:
+        teacher = session.get(Teacher, teacher_id)
+        return teacher.name if teacher else None
+
+
+templates.env.globals["teacher_name"] = _teacher_display_name
+
+
 @app.on_event("startup")
 def on_startup() -> None:
     init_db()
@@ -120,25 +146,136 @@ def set_current_course(request: Request, course_id: int) -> None:
     request.session["course_id"] = course_id
 
 
+def current_teacher(session: Session, request: Request) -> "Teacher | None":
+    teacher_id = request.session.get("teacher_id")
+    if teacher_id is None:
+        return None
+    return session.get(Teacher, teacher_id)
+
+
+def can_edit_course(request: Request, course: Course) -> bool:
+    """Todos los docentes VEN todos los cursos activos; solo el dueño puede
+    editarlos. owner_teacher_id es None en cursos de una instalación previa
+    a que existieran las cuentas (ver _migrate_add_course_owner en
+    database.py) — esos cursos "huérfanos" nadie los reclama automáticamente
+    (cada /signup nuevo crea su propio curso en blanco, ver main.py), así
+    que mientras sigan sin dueño cualquier docente logueado puede editarlos,
+    para no dejarlos inaccesibles."""
+    if course.owner_teacher_id is None:
+        return True
+    return course.owner_teacher_id == request.session.get("teacher_id")
+
+
+def require_course_owner(session: Session, request: Request, course: "Course | None", redirect_url: str):
+    """None si se puede seguir (el curso existe y el docente en sesión puede
+    editarlo); si no, el RedirectResponse que la ruta que llama debe
+    devolver de inmediato. Se usa en toda ruta que MODIFICA algo de un
+    curso (o de una tarea/estudiante/video/anotación que le pertenece) —
+    la visibilidad es para todos los docentes, pero la edición es solo del
+    dueño.
+
+    Si el curso todavía no tiene dueño (owner_teacher_id None — instalación
+    previa a que existieran las cuentas, ver _migrate_add_course_owner en
+    database.py), el primer docente logueado que lo edite lo reclama: queda
+    a su nombre desde ese momento, para que no siga abierto a cualquiera
+    indefinidamente."""
+    if course is None:
+        return RedirectResponse(url="/?msg=Ese curso ya no existe.", status_code=303)
+    if can_edit_course(request, course):
+        if course.owner_teacher_id is None:
+            teacher_id = request.session.get("teacher_id")
+            if teacher_id is not None:
+                course.owner_teacher_id = teacher_id
+                session.add(course)
+                session.commit()
+        return None
+    sep = "&" if "?" in redirect_url else "?"
+    return RedirectResponse(
+        url=f"{redirect_url}{sep}msg=No puedes editar un curso de otro docente.", status_code=303
+    )
+
+
 # ---------------------------------------------------------------- auth ----
 
 @app.get("/login")
 def login_form(request: Request):
-    if request.session.get("logged_in"):
+    if is_logged_in(request):
         return RedirectResponse(url="/", status_code=303)
-    return templates.TemplateResponse("login.html", {"request": request, "error": None})
+    return templates.TemplateResponse("login.html", {"request": request, "error": None, "name": None})
 
 
 @app.post("/login")
 async def login_submit(request: Request):
     form = await request.form()
+    name = (form.get("name") or "").strip()
     password = form.get("password", "")
-    if password == TEACHER_PASSWORD:
-        request.session["logged_in"] = True
+    with Session(engine) as session:
+        teacher = session.exec(select(Teacher).where(Teacher.name_lower == name.lower())).first()
+    if teacher and verify_password(password, teacher.password_hash):
+        request.session["teacher_id"] = teacher.id
+        request.session["teacher_name"] = teacher.name
         return RedirectResponse(url="/", status_code=303)
     return templates.TemplateResponse(
-        "login.html", {"request": request, "error": "Contraseña incorrecta."}, status_code=401
+        "login.html",
+        {"request": request, "error": "Nombre o contraseña incorrectos.", "name": name},
+        status_code=401,
     )
+
+
+@app.get("/signup")
+def signup_form(request: Request):
+    if is_logged_in(request):
+        return RedirectResponse(url="/", status_code=303)
+    return templates.TemplateResponse("signup.html", {"request": request, "error": None, "name": None})
+
+
+@app.post("/signup")
+async def signup_submit(request: Request):
+    form = await request.form()
+    name = (form.get("name") or "").strip()
+    password = form.get("password") or ""
+    invite_code = form.get("invite_code") or ""
+
+    def error(msg: str):
+        return templates.TemplateResponse(
+            "signup.html", {"request": request, "error": msg, "name": name}, status_code=400
+        )
+
+    if invite_code != TEACHER_PASSWORD:
+        return error("Código de invitación incorrecto.")
+    if not name:
+        return error("Escribe tu nombre.")
+    if len(password) < 4:
+        return error("La contraseña debe tener al menos 4 caracteres.")
+
+    with Session(engine) as session:
+        existing = session.exec(select(Teacher).where(Teacher.name_lower == name.lower())).first()
+        if existing:
+            return error("Ya existe una cuenta con ese nombre — si es tuya, inicia sesión.")
+
+        teacher = Teacher(name=name, name_lower=name.lower(), password_hash=hash_password(password))
+        session.add(teacher)
+        session.commit()
+        session.refresh(teacher)
+
+        # Todo docente nuevo parte con un curso propio, en blanco (sin
+        # estudiantes ni tareas) para que le cambie el nombre y agregue sus
+        # alumnos — nunca hereda cursos ni datos de otros docentes, ni
+        # siquiera cursos de una instalación anterior a que existieran las
+        # cuentas (esos quedan con owner_teacher_id NULL, ver
+        # _migrate_add_course_owner en database.py; can_edit_course permite
+        # que cualquier docente logueado los edite mientras nadie los
+        # reclame, pero /signup ya no se los asigna a nadie automáticamente).
+        new_course = Course(name="Mi curso", active=True, owner_teacher_id=teacher.id)
+        session.add(new_course)
+        session.commit()
+        session.refresh(new_course)
+
+        request.session["teacher_id"] = teacher.id
+        request.session["teacher_name"] = teacher.name
+        request.session["course_id"] = new_course.id
+
+    return RedirectResponse(url="/", status_code=303)
 
 
 @app.get("/logout")
@@ -191,6 +328,7 @@ def dashboard(request: Request):
             "assignments": rows,
             "course": course,
             "courses": courses,
+            "can_edit": can_edit_course(request, course),
         },
     )
 
@@ -216,6 +354,9 @@ async def assignment_new_submit(request: Request):
     name = (form.get("name") or "").strip()
     with Session(engine) as session:
         course, _courses = current_course(session, request)
+        denied = require_course_owner(session, request, course, "/")
+        if denied:
+            return denied
         if name:
             a = Assignment(name=name, course_id=course.id)
             session.add(a)
@@ -243,7 +384,14 @@ def courses_list(request: Request):
                 ).all()
             )
             n_assignments = len(session.exec(select(Assignment).where(Assignment.course_id == c.id)).all())
-            counts.append({"course": c, "n_students": n_students, "n_assignments": n_assignments})
+            counts.append(
+                {
+                    "course": c,
+                    "n_students": n_students,
+                    "n_assignments": n_assignments,
+                    "can_edit": can_edit_course(request, c),
+                }
+            )
     return templates.TemplateResponse(
         "courses.html",
         {"request": request, "active": "courses", "course": course, "courses": courses, "rows": counts},
@@ -259,7 +407,7 @@ async def courses_new(request: Request):
     name = (form.get("name") or "").strip()
     with Session(engine) as session:
         if name:
-            c = Course(name=name, active=True)
+            c = Course(name=name, active=True, owner_teacher_id=request.session.get("teacher_id"))
             session.add(c)
             session.commit()
             session.refresh(c)
@@ -276,6 +424,9 @@ async def courses_rename(course_id: int, request: Request):
     name = (form.get("name") or "").strip()
     with Session(engine) as session:
         c = session.get(Course, course_id)
+        denied = require_course_owner(session, request, c, "/courses")
+        if denied:
+            return denied
         if c and name:
             c.name = name
             session.add(c)
@@ -290,6 +441,9 @@ def courses_toggle(course_id: int, request: Request):
         return redirect
     with Session(engine) as session:
         c = session.get(Course, course_id)
+        denied = require_course_owner(session, request, c, "/courses")
+        if denied:
+            return denied
         if c:
             if c.active:
                 active_count = len(session.exec(select(Course).where(Course.active == True)).all())  # noqa: E712
@@ -343,6 +497,7 @@ def rubric_form(assignment_id: int, request: Request):
             "error": None,
             "course": course,
             "courses": courses,
+            "can_edit": can_edit_course(request, course),
         },
     )
 
@@ -366,6 +521,9 @@ async def rubric_submit(assignment_id: int, request: Request):
 
         set_current_course(request, assignment.course_id)
         course, courses = current_course(session, request)
+        denied = require_course_owner(session, request, course, f"/assignments/{assignment_id}/rubric")
+        if denied:
+            return denied
 
         def rerender(error: str):
             submitted = [{"id": rid, "name": rname, "weight": rweight} for rid, rname, rweight in rows]
@@ -444,7 +602,14 @@ def students_list(request: Request):
         ).all()
     return templates.TemplateResponse(
         "students.html",
-        {"request": request, "active": "students", "students": students, "course": course, "courses": courses},
+        {
+            "request": request,
+            "active": "students",
+            "students": students,
+            "course": course,
+            "courses": courses,
+            "can_edit": can_edit_course(request, course),
+        },
     )
 
 
@@ -457,6 +622,9 @@ async def students_add(request: Request):
     name = (form.get("name") or "").strip()
     with Session(engine) as session:
         course, _courses = current_course(session, request)
+        denied = require_course_owner(session, request, course, "/students")
+        if denied:
+            return denied
         if name:
             session.add(Student(name=name, course_id=course.id))
             session.commit()
@@ -473,6 +641,9 @@ async def students_bulk_add(request: Request):
     names = [n.strip() for n in names_raw.splitlines() if n.strip()]
     with Session(engine) as session:
         course, _courses = current_course(session, request)
+        denied = require_course_owner(session, request, course, "/students")
+        if denied:
+            return denied
         for n in names:
             session.add(Student(name=n, course_id=course.id))
         if names:
@@ -487,10 +658,15 @@ def students_toggle(student_id: int, request: Request):
         return redirect
     with Session(engine) as session:
         s = session.get(Student, student_id)
-        if s:
-            s.active = not s.active
-            session.add(s)
-            session.commit()
+        if s is None:
+            return RedirectResponse(url="/students?msg=Ese estudiante ya no existe.", status_code=303)
+        course = session.get(Course, s.course_id)
+        denied = require_course_owner(session, request, course, "/students")
+        if denied:
+            return denied
+        s.active = not s.active
+        session.add(s)
+        session.commit()
     return RedirectResponse(url="/students", status_code=303)
 
 
@@ -618,6 +794,7 @@ def grading_screen(assignment_id: int, request: Request):
                 "videos_share_url": videos_share_url,
                 "active_tab": active_tab,
                 "r2_configured": storage.is_configured(),
+                "can_edit": can_edit_course(request, course),
             },
         )
 
@@ -640,6 +817,10 @@ async def grading_save(assignment_id: int, request: Request):
         assignment = session.get(Assignment, assignment_id)
         if not assignment:
             return RedirectResponse(url="/?msg=Esa tarea no existe.", status_code=303)
+        course = session.get(Course, assignment.course_id)
+        denied = require_course_owner(session, request, course, f"/assignments/{assignment_id}")
+        if denied:
+            return denied
 
         aspects = session.exec(select(RubricAspect).where(RubricAspect.assignment_id == assignment.id)).all()
         for a in aspects:
@@ -959,6 +1140,10 @@ async def video_upload(assignment_id: int, request: Request):
         student = session.get(Student, student_id)
         if not assignment or not student:
             return RedirectResponse(url="/?msg=Esa tarea o estudiante no existe.", status_code=303)
+        course = session.get(Course, assignment.course_id)
+        denied = require_course_owner(session, request, course, f"/assignments/{assignment_id}")
+        if denied:
+            return denied
 
         # La etiqueta manual solo tiene sentido para UN archivo — si se
         # suben varios a la vez, todos quedarían con la misma etiqueta, así
@@ -1033,6 +1218,9 @@ def video_delete(video_id: int, request: Request):
         video = session.get(Video, video_id)
         if not video:
             return RedirectResponse(url="/", status_code=303)
+        denied = require_course_owner(session, request, _course_for_video(session, video), f"/assignments/{video.assignment_id}")
+        if denied:
+            return denied
         assignment_id, student_id, key = video.assignment_id, video.student_id, video.object_key
         session.delete(video)
         session.commit()
@@ -1065,6 +1253,9 @@ async def video_rename(video_id: int, request: Request):
         video = session.get(Video, video_id)
         if not video:
             return RedirectResponse(url="/", status_code=303)
+        denied = require_course_owner(session, request, _course_for_video(session, video), f"/assignments/{video.assignment_id}")
+        if denied:
+            return denied
         assignment_id, student_id = video.assignment_id, video.student_id
         if new_label:
             video.label = new_label
@@ -1178,6 +1369,7 @@ def video_review(video_id: int, request: Request):
                 "course": course,
                 "courses": courses,
                 "share_url": share_url,
+                "can_edit": can_edit_course(request, course),
             },
         )
 
@@ -1189,6 +1381,17 @@ def video_review(video_id: int, request: Request):
 # manijas ANTES de guardar, ver el borrador en video_review.html) y al
 # ajustar una anotación ya guardada (POST /annotations/{id}/range).
 MIN_ANNOTATION_RANGE_SECONDS = 1 / 24  # un cuadro a 24fps
+
+
+def _course_for_video(session: Session, video: "Video | None") -> "Course | None":
+    """Sube la cadena video -> tarea -> curso para saber a quién pertenece,
+    y así poder chequear el dueño antes de dejar editar/anotar/eliminar."""
+    if not video:
+        return None
+    assignment = session.get(Assignment, video.assignment_id)
+    if not assignment:
+        return None
+    return session.get(Course, assignment.course_id)
 
 
 def _normalize_range(start: float, end: "float | None") -> "tuple[float, float | None]":
@@ -1215,6 +1418,9 @@ async def annotation_create(video_id: int, request: Request):
         video = session.get(Video, video_id)
         if not video:
             return RedirectResponse(url="/?msg=Ese video no existe.", status_code=303)
+        denied = require_course_owner(session, request, _course_for_video(session, video), f"/videos/{video_id}")
+        if denied:
+            return denied
 
         form = await request.form()
 
@@ -1294,6 +1500,10 @@ async def annotation_edit(annotation_id: int, request: Request):
         if not ann:
             return RedirectResponse(url="/?msg=Esa anotación no existe.", status_code=303)
         video_id = ann.video_id
+        video = session.get(Video, video_id)
+        denied = require_course_owner(session, request, _course_for_video(session, video), f"/videos/{video_id}")
+        if denied:
+            return denied
 
         form = await request.form()
 
@@ -1348,6 +1558,10 @@ def annotation_delete(annotation_id: int, request: Request):
         if not ann:
             return RedirectResponse(url="/", status_code=303)
         video_id = ann.video_id
+        video = session.get(Video, video_id)
+        denied = require_course_owner(session, request, _course_for_video(session, video), f"/videos/{video_id}")
+        if denied:
+            return denied
         session.delete(ann)
         session.commit()
 
@@ -1379,6 +1593,17 @@ async def annotation_set_range(annotation_id: int, request: Request):
         ann = session.get(Annotation, annotation_id)
         if not ann:
             return JSONResponse({"error": "esa anotación no existe"}, status_code=404)
+        video = session.get(Video, ann.video_id)
+        course = _course_for_video(session, video)
+        if course is not None:
+            if not can_edit_course(request, course):
+                return JSONResponse({"error": "no puedes editar un curso de otro docente"}, status_code=403)
+            if course.owner_teacher_id is None:
+                teacher_id = request.session.get("teacher_id")
+                if teacher_id is not None:
+                    course.owner_teacher_id = teacher_id
+                    session.add(course)
+                    session.commit()
 
         try:
             start = float(body.get("start"))

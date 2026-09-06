@@ -25,6 +25,7 @@
 
   <div class="card" style="padding:0; flex:2;">
     {% for row in rows %}
+    {% if row.can_edit %}
     <form method="post" action="/courses/{{ row.course.id }}/rename" class="course-row">
       <input type="text" name="name" value="{{ row.course.name }}" class="course-name-input">
       <span class="course-meta">{{ row.n_students }} estudiantes · {{ row.n_assignments }} tareas</span>
@@ -35,6 +36,19 @@
         <button type="submit" formaction="/courses/{{ row.course.id }}/toggle" class="btn secondary">{{ 'Desactivar' if row.course.active else 'Activar' }}</button>
       </div>
     </form>
+    {% else %}
+    <div class="course-row">
+      <span class="course-name-input" style="border-color:transparent; padding-left:0;">{{ row.course.name }}</span>
+      <span class="course-meta">
+        {{ row.n_students }} estudiantes · {{ row.n_assignments }} tareas · de {{ teacher_name(row.course.owner_teacher_id) or 'otro docente' }}
+      </span>
+      {% if row.course.id == course.id %}<span class="pill ok">actual</span>{% endif %}
+      {% if row.course.active %}<span class="pill ok">Activo</span>{% else %}<span class="pill pending">Inactivo</span>{% endif %}
+      <div class="course-row-actions">
+        <span class="hint" style="margin:0;">Solo su dueño puede editarlo</span>
+      </div>
+    </div>
+    {% endif %}
     {% endfor %}
   </div>
 </div>

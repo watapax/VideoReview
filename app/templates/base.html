@@ -44,6 +44,9 @@
         </a>
       </nav>
 
+      {% if request.session.get('teacher_name') %}
+      <div class="signed-in-as">Conectado como <strong>{{ request.session.get('teacher_name') }}</strong></div>
+      {% endif %}
       <a class="logout" href="/logout">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/></svg>
         Cerrar sesión
@@ -54,6 +57,12 @@
       <div class="page{% block page_wide %}{% endblock %}">
         {% if request.query_params.get('msg') %}
           <div class="flash">{{ request.query_params.get('msg') }}</div>
+        {% endif %}
+        {% if course and course.owner_teacher_id and course.owner_teacher_id != request.session.get('teacher_id') %}
+          <div class="flash">
+            Estás viendo el curso de <strong>{{ teacher_name(course.owner_teacher_id) }}</strong> — puedes verlo, pero
+            solo su dueño puede editarlo.
+          </div>
         {% endif %}
         {% block content %}{% endblock %}
       </div>

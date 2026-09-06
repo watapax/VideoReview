@@ -95,8 +95,15 @@ a:hover { color: #7d97ff; }
 .side-nav a.active { color: var(--text); background: var(--accent-soft); }
 .side-nav a.active svg { color: var(--accent); opacity: 1; }
 
-.app-sidebar .logout {
+.signed-in-as {
   margin-top: auto;
+  padding: 9px 10px 0;
+  font-size: 11.5px;
+  color: var(--muted-2);
+}
+.signed-in-as strong { color: var(--muted); font-weight: 600; }
+
+.app-sidebar .logout {
   display: flex; align-items: center; gap: 8px;
   padding: 9px 10px; border-radius: 9px;
   color: var(--muted-2); font-size: 12.5px;
@@ -174,6 +181,11 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 .field { margin-bottom: 14px; }
 .row { display: flex; gap: 14px; }
 .row > * { flex: 1; }
+/* Texto secundario genérico (avisos, aclaraciones) — usado en login/signup y
+   donde haga falta un párrafo de apoyo sin crear una clase nueva por
+   pantalla. */
+.muted { color: var(--muted); font-size: 13px; }
+.hint { color: var(--muted-2); font-size: 12px; margin: 4px 0 0; }
 
 .pill { font-size: 11px; font-weight: 600; border-radius: 999px; padding: 3px 9px; border: 1px solid var(--border-strong); color: var(--muted); }
 .pill.ok { background: var(--ok-bg); color: var(--ok); border-color: transparent; }

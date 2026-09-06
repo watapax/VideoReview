@@ -4,13 +4,46 @@ from typing import Optional
 from sqlmodel import Field, SQLModel
 
 
+class Teacher(SQLModel, table=True):
+    """Una cuenta de docente. Cada uno se registra solo (ver /signup en
+    main.py, requiere el código de invitación de la app) y desde ahí crea y
+    administra sus propios cursos (ver Course.owner_teacher_id).
+
+    `name` es el nombre con el que inicia sesión (no un email) — se guarda
+    también en minúscula en `name_lower` para poder buscarlo sin
+    distinguir mayúsculas/minúsculas sin depender de collation de SQLite.
+    `password_hash` guarda sal+hash juntos como un solo string (ver
+    app.auth.hash_password/verify_password) — no se guarda la contraseña
+    en texto plano en ningún momento.
+    """
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    name_lower: str = Field(index=True, unique=True)
+    password_hash: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class Course(SQLModel, table=True):
     """Un curso (ej: 'Animación 2D - Sección 1'). Cada curso tiene su propia
-    rúbrica, su propia lista de estudiantes y sus propias tareas."""
+    rúbrica, su propia lista de estudiantes y sus propias tareas.
+
+    `owner_teacher_id` es el docente dueño (quien lo creó — cada /signup
+    nuevo crea automáticamente un curso propio en blanco para el docente
+    recién registrado, ver main.py): todos los docentes VEN todos los
+    cursos activos, pero solo el dueño puede editarlos (renombrarlo,
+    agregar tareas/estudiantes, poner notas, subir videos, anotar). None
+    solo puede darse en cursos de una instalación previa a que existieran
+    las cuentas — ver _migrate_add_course_owner() en database.py; esos
+    cursos huérfanos no se le asignan a nadie automáticamente, así que
+    cualquier docente logueado puede editarlos hasta que alguien los
+    reclame a mano.
+    """
 
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str
     active: bool = True
+    owner_teacher_id: Optional[int] = Field(default=None, foreign_key="teacher.id", index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 

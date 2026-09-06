@@ -80,7 +80,7 @@
       </div>
 
       <div class="review-actions">
-        <button type="button" class="btn" id="new-annotation-btn">+ Nueva anotación</button>
+        <button type="button" class="btn" id="new-annotation-btn" {{ 'hidden' if not can_edit else '' }}>+ Nueva anotación</button>
         <div id="creating-actions" class="review-actions-creating" hidden>
           <button type="button" class="btn secondary" id="cancel-btn">Cancelar</button>
           <button type="submit" form="annotation-form" class="btn" id="save-annotation-btn">Guardar anotación</button>
@@ -114,6 +114,7 @@
             <div class="annotation-time">{{ a.time_display }}{% if a.is_ranged %} – {{ a.end_time_display }}{% endif %}</div>
             {% if a.note %}<div class="annotation-note">{{ a.note }}</div>{% endif %}
           </div>
+          {% if can_edit %}
           <div class="annotation-row-actions">
             <button type="button" class="icon-btn annotation-edit-btn" title="Editar anotación">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
@@ -124,6 +125,7 @@
               </button>
             </form>
           </div>
+          {% endif %}
         </div>
         {% else %}
         <div class="annotations-empty">Todavía no hay anotaciones. Pausa el video donde quieras comentar y toca "+ Nueva anotación".</div>
@@ -185,6 +187,15 @@
   // guardar no "desaparece": no se había perdido, solo no se volvía a mostrar.
   const ANNOTATIONS = JSON.parse(document.getElementById('annotations-data').textContent || '[]');
   const HIGHLIGHT_ID = {{ highlight_id or 'null' }};
+  // Este curso es de otro docente (visible para todos, editable solo por su
+  // dueño — ver can_edit_course en main.py): los botones de crear/editar/
+  // eliminar ya vienen ocultos u omitidos del HTML (ver arriba), y esto
+  // además evita que aparezcan las manijas de arrastre de una anotación ya
+  // guardada (que sí mutan datos via /annotations/{id}/range) al
+  // seleccionarla solo para verla. El servidor igual rechaza cualquier
+  // intento de guardar, esto es solo para que la interfaz no invite a
+  // hacer algo que de todas formas se va a rechazar.
+  const CAN_EDIT = {{ 'true' if can_edit else 'false' }};
 
   let creating = false;
   // null mientras se crea una anotación nueva; el id de la anotación que se
@@ -426,7 +437,7 @@
       const rec = { mainEl, handleStart: null, handleEnd: null };
       markerEls[ann.id] = rec;
 
-      if (selected) {
+      if (selected && CAN_EDIT) {
         rec.handleStart = createHandle(ann, 'start');
         rec.handleEnd = createHandle(ann, 'end');
         timelineLane.appendChild(rec.handleStart);
@@ -435,7 +446,7 @@
       repositionMarker(ann);
     });
 
-    if (creating) renderDraftMarker();
+    if (creating && CAN_EDIT) renderDraftMarker();
     updateLiveHighlights();
   }
 

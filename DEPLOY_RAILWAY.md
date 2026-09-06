@@ -80,9 +80,14 @@ conectarte al volumen.
 Con la CLI, desde la carpeta del proyecto:
 
 ```
-railway variable set TEACHER_PASSWORD=tu-contraseña-elegida
+railway variable set TEACHER_PASSWORD=tu-codigo-de-invitacion
 railway variable set SECRET_KEY=algo-largo-y-aleatorio
 ```
+
+`TEACHER_PASSWORD` ahora es el código de invitación para crear cuentas de
+docente nuevas (cada uno se registra con su propio nombre y contraseña
+desde `/signup`) — no la contraseña de nadie para entrar día a día. Ver
+"Cuentas de docente" en el README.
 
 Para generar un `SECRET_KEY` seguro (no reutilices el de tu `.env` local, usa
 uno distinto para producción), corre esto y copia el resultado:
@@ -109,14 +114,18 @@ localmente con `docker compose up`).
 Desde el dashboard: tu servicio → **Settings → Networking → Public
 Networking → Generate Domain**. Te da una URL tipo
 `correccion-animacion.up.railway.app` con HTTPS automático, lista para
-compartir contigo mismo (nadie más necesita entrar, sigue pidiendo tu
-contraseña).
+compartir con otros docentes que quieras invitar — cada uno se crea su
+propia cuenta con el código de invitación (`TEACHER_PASSWORD`), nadie entra
+sin cuenta.
 
 ## 9. Verifica
 
-Abre la URL, entra con tu `TEACHER_PASSWORD`, y confirma que ves tu curso (o
-la base de datos vacía, si elegiste partir limpio). Si migraste datos reales,
-revisa que tus cursos, estudiantes y notas estén completos.
+Abre la URL y crea tu cuenta de docente (con el `TEACHER_PASSWORD` como
+código de invitación). Vas a partir con un curso propio en blanco ("Mi
+curso") — si migraste datos reales, tu curso anterior no se te asigna
+solo; entra a "Cursos" y edítalo (por ejemplo, cambiándole el nombre) para
+que quede a tu nombre, y desde ahí revisa que tus estudiantes y notas
+estén completos.
 
 ---
 

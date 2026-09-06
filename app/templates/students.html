@@ -7,6 +7,7 @@
 </div>
 
 <div class="row" style="align-items:flex-start;">
+  {% if can_edit %}
   <div class="card">
     <h3 style="margin-top:0; font-size:14px;">Agregar estudiante</h3>
     <form method="post" action="/students/add">
@@ -25,6 +26,7 @@
       <button class="btn secondary" type="submit">Agregar lista</button>
     </form>
   </div>
+  {% endif %}
 
   <div class="card" style="padding:0; flex:2;">
     <table>
@@ -37,9 +39,11 @@
             {% if s.active %}<span class="pill ok">Activo</span>{% else %}<span class="pill pending">Inactivo</span>{% endif %}
           </td>
           <td style="text-align:right;">
+            {% if can_edit %}
             <form method="post" action="/students/{{ s.id }}/toggle" style="display:inline;">
               <button class="btn secondary" type="submit">{{ 'Desactivar' if s.active else 'Activar' }}</button>
             </form>
+            {% endif %}
           </td>
         </tr>
         {% else %}

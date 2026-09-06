@@ -13,6 +13,21 @@
 
 {% if error %}<div class="flash" style="border-color:#e88a6a;">{{ error }}</div>{% endif %}
 
+{% if not can_edit %}
+<div class="card">
+  <p class="hint" style="margin:0 0 12px;">Solo el dueño de este curso puede editar la rúbrica.</p>
+  <table>
+    <thead>
+      <tr><th style="width:50%;">Aspecto</th><th>Ponderación (%)</th></tr>
+    </thead>
+    <tbody>
+      {% for a in aspects %}
+      <tr><td>{{ a.name }}</td><td>{{ a.weight }}%</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
 <div class="card">
   <form method="post" action="/assignments/{{ assignment.id }}/rubric" id="rubric-form">
     <table id="rubric-table">
@@ -45,6 +60,7 @@
     <button class="btn" type="submit">Guardar rúbrica</button>
   </form>
 </div>
+{% endif %}
 
 <template id="row-template">
   <tr>
@@ -61,6 +77,7 @@
   </tr>
 </template>
 
+{% if can_edit %}
 <script>
   const table = document.getElementById('rubric-table').querySelector('tbody');
   const tmpl = document.getElementById('row-template');
@@ -89,5 +106,6 @@
   table.addEventListener('input', updateTotal);
   updateTotal();
 </script>
+{% endif %}
 
 {% endblock %}
