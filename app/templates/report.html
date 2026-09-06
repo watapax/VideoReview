@@ -144,6 +144,10 @@
     }
     .ac-head { display: flex; align-items: center; gap: 10px; }
     .ac-name { font-size: 16.5px; font-weight: 700; color: var(--pc); }
+    /* Solo los ámbitos con explicación (RubricAspect.description, ver
+       rubric.html) son clickeables -- el título abre el recuadro de abajo. */
+    .ac-name.has-desc { cursor: pointer; text-underline-offset: 3px; }
+    .ac-name.has-desc:hover, .ac-name.has-desc:focus-visible { text-decoration: underline; }
     .ac-weight { font-size: 12px; color: var(--muted-2); font-weight: 600; margin-left: auto; }
     .ac-score {
       font-size: 14px; font-weight: 800; border-radius: 7px; padding: 3px 11px; font-variant-numeric: tabular-nums;
@@ -177,6 +181,33 @@
     #view-video .review-topbar { padding: 20px 52px; }
     #view-video .review-main { padding: 24px 52px; }
     #view-video .annotations-panel { padding-top: 0; }
+
+    /* ------------------------------------------------- explicación del ámbito - */
+    /* Se abre al apretar el título de un aspecto que tiene descripción (ver
+       RubricAspect.description / rubric.html) -- recuadro encima de todo con
+       el fondo desenfocado, tal como pidió el profesor. */
+    .aspect-desc-overlay {
+      position: fixed; inset: 0; z-index: 300;
+      background: rgba(6, 8, 12, .55);
+      backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+      display: flex; align-items: center; justify-content: center; padding: 24px;
+    }
+    .aspect-desc-overlay[hidden] { display: none; }
+    .aspect-desc-modal {
+      position: relative; background: var(--card); border: 1px solid var(--border-strong);
+      border-radius: var(--radius-lg); width: 100%; max-width: 560px; max-height: 78vh;
+      overflow-y: auto; padding: 32px 36px 30px; box-shadow: 0 24px 64px rgba(0,0,0,.45);
+      animation: aspect-desc-in .16s ease;
+    }
+    @keyframes aspect-desc-in { from { opacity: 0; transform: translateY(6px) scale(.98); } to { opacity: 1; transform: none; } }
+    .aspect-desc-close {
+      position: absolute; top: 12px; right: 12px; background: none; border: none; cursor: pointer;
+      color: var(--muted); padding: 7px; border-radius: 50%; line-height: 0;
+      transition: color .15s ease, background .15s ease; font-family: inherit;
+    }
+    .aspect-desc-close:hover { color: var(--text); background: var(--panel-2); }
+    .aspect-desc-title { font-size: 17.5px; font-weight: 800; color: var(--text); margin: 0 30px 14px 0; }
+    .aspect-desc-body { font-size: 14.5px; line-height: 1.75; color: var(--text); opacity: .92; white-space: pre-wrap; }
   </style>
 </head>
 <body>
@@ -308,6 +339,16 @@
       </div>
     </div>
   </div>
+
+  <div class="aspect-desc-overlay" id="aspect-desc-overlay" hidden>
+    <div class="aspect-desc-modal" role="dialog" aria-modal="true" aria-labelledby="aspect-desc-title">
+      <button type="button" class="aspect-desc-close" id="aspect-desc-close" aria-label="Cerrar">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+      <div class="aspect-desc-title" id="aspect-desc-title"></div>
+      <div class="aspect-desc-body" id="aspect-desc-body"></div>
+    </div>
+  </div>
 </div>
 
 <script type="application/json" id="report-data">{{ report_data_json|safe }}</script>
@@ -385,9 +426,13 @@
             'Ver video de este ámbito' +
           '</button>'
         : '';
+      var hasDesc = !!(meta.description && meta.description.length);
+      var nameAttrs = hasDesc
+        ? ' class="ac-name has-desc" data-aspect-idx="' + i + '" tabindex="0" role="button" title="Ver explicación de este ámbito"'
+        : ' class="ac-name"';
       card.innerHTML =
         '<div class="ac-head">' +
-          '<div class="ac-name">' + meta.name + '</div>' +
+          '<div' + nameAttrs + '>' + meta.name + '</div>' +
           '<div class="ac-weight">ponderación ' + meta.weight_display + '%</div>' +
           '<div class="ac-score band-' + a.band + '">' + a.score_display + '</div>' +
         '</div>' +
@@ -405,10 +450,52 @@
   // videos y adivinar cuál corresponde. Delegado en aspectsGrid porque las
   // tarjetas se recrean por completo en cada showDetail().
   aspectsGrid.addEventListener('click', function (e) {
+    var nameEl = e.target.closest('.ac-name.has-desc');
+    if (nameEl) {
+      openAspectDesc(nameEl.dataset.aspectIdx);
+      return;
+    }
     var btn = e.target.closest('.ac-video-btn');
     if (!btn) return;
     showVideoAt(parseInt(btn.dataset.videoIndex, 10));
     setView('video');
+  });
+  // El título es role="button" (además de tener :hover), así que también se
+  // abre con teclado (Enter / espacio), no solo con el mouse.
+  aspectsGrid.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    var nameEl = e.target.closest('.ac-name.has-desc');
+    if (!nameEl) return;
+    e.preventDefault();
+    openAspectDesc(nameEl.dataset.aspectIdx);
+  });
+
+  // -----------------------------------------------------------------------
+  // Recuadro con la explicación del ámbito (RubricAspect.description) --
+  // encima de todo, con el fondo desenfocado. Solo existe la posibilidad de
+  // abrirlo cuando el aspecto tiene contenido (ver hasDesc en showDetail()).
+  // -----------------------------------------------------------------------
+  var aspectDescOverlay = document.getElementById('aspect-desc-overlay');
+  var aspectDescTitle = document.getElementById('aspect-desc-title');
+  var aspectDescBody = document.getElementById('aspect-desc-body');
+  var aspectDescClose = document.getElementById('aspect-desc-close');
+
+  function openAspectDesc(idx) {
+    var meta = ASPECTS[parseInt(idx, 10)];
+    if (!meta || !meta.description) return;
+    aspectDescTitle.textContent = meta.name;
+    aspectDescBody.textContent = meta.description;
+    aspectDescOverlay.hidden = false;
+    aspectDescClose.focus();
+  }
+  function closeAspectDesc() { aspectDescOverlay.hidden = true; }
+
+  aspectDescClose.addEventListener('click', closeAspectDesc);
+  aspectDescOverlay.addEventListener('click', function (e) {
+    if (e.target === aspectDescOverlay) closeAspectDesc();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !aspectDescOverlay.hidden) closeAspectDesc();
   });
 
   document.getElementById('back-to-grades-btn').addEventListener('click', function () { setView('grades'); });

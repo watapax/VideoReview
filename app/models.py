@@ -52,6 +52,12 @@ class RubricAspect(SQLModel, table=True):
 
     Cada tarea tiene su propia rúbrica — dos tareas del mismo curso pueden
     evaluar aspectos distintos con ponderaciones distintas.
+
+    `description` es una explicación opcional de qué trata el ámbito (ej: qué
+    se espera ver en el video para considerarlo bien logrado). Se edita junto
+    al nombre y la ponderación en la rúbrica, y en el informe se puede
+    revisar apretando el título del ámbito -- solo cuando tiene contenido
+    (ver report.html / _report_ctx en main.py).
     """
 
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -59,6 +65,7 @@ class RubricAspect(SQLModel, table=True):
     name: str
     weight: float  # porcentaje, ej: 25.0
     order: int = 0
+    description: Optional[str] = Field(default=None)
 
 
 class Student(SQLModel, table=True):

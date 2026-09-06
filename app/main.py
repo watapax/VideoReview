@@ -637,7 +637,13 @@ async def rubric_submit(assignment_id: int, request: Request):
     ids = form.getlist("aspect_id")
     names = form.getlist("aspect_name")
     weights = form.getlist("aspect_weight")
-    rows = list(zip(ids, names, weights))
+    descriptions = form.getlist("aspect_description")
+    # aspect_description puede venir vacío para filas viejas que no tenían el
+    # campo (no debería pasar con el template actual, pero por si acaso no
+    # queremos que un desalineamiento de listas rompa el zip).
+    if len(descriptions) < len(ids):
+        descriptions += [""] * (len(ids) - len(descriptions))
+    rows = list(zip(ids, names, weights, descriptions))
 
     with Session(engine) as session:
         assignment = session.get(Assignment, assignment_id)
@@ -651,7 +657,10 @@ async def rubric_submit(assignment_id: int, request: Request):
             return denied
 
         def rerender(error: str):
-            submitted = [{"id": rid, "name": rname, "weight": rweight} for rid, rname, rweight in rows]
+            submitted = [
+                {"id": rid, "name": rname, "weight": rweight, "description": rdesc}
+                for rid, rname, rweight, rdesc in rows
+            ]
             return templates.TemplateResponse(
                 "rubric.html",
                 {
@@ -667,7 +676,7 @@ async def rubric_submit(assignment_id: int, request: Request):
             )
 
         try:
-            total = sum(float(w) for _id, _name, w in rows)
+            total = sum(float(w) for _id, _name, w, _desc in rows)
         except ValueError:
             return rerender("Alguna ponderación no es un número válido.")
 
@@ -679,7 +688,7 @@ async def rubric_submit(assignment_id: int, request: Request):
         existing = session.exec(
             select(RubricAspect).where(RubricAspect.assignment_id == assignment.id)
         ).all()
-        submitted_ids = {int(rid) for rid, _n, _w in rows if rid != "new"}
+        submitted_ids = {int(rid) for rid, _n, _w, _d in rows if rid != "new"}
         to_delete = [a for a in existing if a.id not in submitted_ids]
 
         for a in to_delete:
@@ -693,17 +702,23 @@ async def rubric_submit(assignment_id: int, request: Request):
         for a in to_delete:
             session.delete(a)
 
-        for idx, (rid, rname, rweight) in enumerate(rows):
+        for idx, (rid, rname, rweight, rdesc) in enumerate(rows):
             rname = rname.strip()
             rweight_f = float(rweight)
+            rdesc_clean = rdesc.strip() or None
             if rid == "new":
-                session.add(RubricAspect(name=rname, weight=rweight_f, order=idx, assignment_id=assignment.id))
+                session.add(
+                    RubricAspect(
+                        name=rname, weight=rweight_f, order=idx, assignment_id=assignment.id, description=rdesc_clean
+                    )
+                )
             else:
                 obj = session.get(RubricAspect, int(rid))
                 if obj and obj.assignment_id == assignment.id:
                     obj.name = rname
                     obj.weight = rweight_f
                     obj.order = idx
+                    obj.description = rdesc_clean
                     session.add(obj)
 
         session.commit()
@@ -1053,7 +1068,14 @@ def _report_ctx(session: Session, assignment: Assignment, base_url: str):
         students, key=lambda s: (finals[s.id] is None, -(finals[s.id] or 0), s.name)
     )
 
-    aspects_meta = [{"name": a.name, "weight_display": weight_display(a.weight)} for a in aspects]
+    aspects_meta = [
+        {
+            "name": a.name,
+            "weight_display": weight_display(a.weight),
+            "description": (a.description or "").strip(),
+        }
+        for a in aspects
+    ]
 
     students_ctx = []
     for s in ordered_students:

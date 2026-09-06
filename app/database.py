@@ -185,6 +185,29 @@ def _migrate_add_video_aspect() -> None:
         conn.close()
 
 
+def _migrate_add_aspect_description() -> None:
+    """Migración: agrega description a rubricaspect (explicación opcional de
+    qué trata el ámbito).
+
+    Instalaciones existentes ya tienen la tabla rubricaspect sin esta
+    columna; metadata.create_all() no la agrega sola a una tabla que ya
+    existe. Es opcional (NULL): el título del aspecto solo aparece
+    clickeable en el informe cuando el docente escribió una explicación
+    (ver report.html / _report_ctx en main.py). Segura de correr en cada
+    arranque: si ya está migrada, no hace nada.
+    """
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        cur = conn.cursor()
+        if not _table_exists(cur, "rubricaspect"):
+            return
+        if not _column_exists(cur, "rubricaspect", "description"):
+            cur.execute("ALTER TABLE rubricaspect ADD COLUMN description TEXT")
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def init_db() -> None:
     SQLModel.metadata.create_all(engine)
     _migrate_add_courses()
@@ -192,6 +215,7 @@ def init_db() -> None:
     _migrate_add_annotation_range()
     _migrate_add_course_owner()
     _migrate_add_video_aspect()
+    _migrate_add_aspect_description()
 
 
 def get_session():
