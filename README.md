@@ -52,10 +52,16 @@ código de invitación (`TEACHER_PASSWORD` en `.env`): pásaselo a quien
 quieras invitar, no es necesario compartir tu contraseña.
 
 Todos los docentes VEN los cursos de todos (útil para revisar entre
-colegas), pero **solo el dueño de un curso puede editarlo** — renombrarlo,
-agregar tareas o estudiantes, poner notas, subir videos o anotar. Un curso
-de otro docente se ve igual que el tuyo, pero sin los botones de editar, y
-con un aviso de quién es su dueño.
+colegas), pero **solo el dueño de un curso puede editarlo o navegarlo** —
+renombrarlo, agregar tareas o estudiantes, poner notas, subir videos,
+anotar, o simplemente entrar a su pantalla de Corregir. En **Cursos** vas a
+ver dos secciones: "Mis cursos" (los tuyos, editables como siempre, y los
+únicos que aparecen en el selector "Curso" de la barra lateral) y "Cursos
+de otros docentes" (agrupados por docente, en una lista de solo lectura).
+De un curso ajeno lo único que puedes abrir es el **informe** de cada
+tarea — con las notas finales y las anotaciones de video de cada
+estudiante, igual que el informe de tus propios cursos — pero sin el botón
+de compartir ni forma de editar nada.
 
 Cada vez que alguien crea su cuenta, la app le arma automáticamente un
 curso propio en blanco ("Mi curso"), sin estudiantes ni tareas, listo para

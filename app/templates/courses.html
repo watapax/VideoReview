@@ -18,14 +18,14 @@
       </div>
       <button class="btn" type="submit">Crear curso</button>
     </form>
-    <p style="font-size:12px; color:var(--muted); margin-top:14px;">
+    <p class="hint" style="margin-top:14px;">
       Al crear una tarea en este curso, defines la rúbrica de esa tarea (cada tarea tiene la suya).
     </p>
   </div>
 
   <div class="card" style="padding:0; flex:2;">
-    {% for row in rows %}
-    {% if row.can_edit %}
+    <div class="section-heading">Mis cursos</div>
+    {% for row in my_rows %}
     <form method="post" action="/courses/{{ row.course.id }}/rename" class="course-row">
       <input type="text" name="name" value="{{ row.course.name }}" class="course-name-input">
       <span class="course-meta">{{ row.n_students }} estudiantes · {{ row.n_assignments }} tareas</span>
@@ -37,20 +37,47 @@
       </div>
     </form>
     {% else %}
-    <div class="course-row">
-      <span class="course-name-input" style="border-color:transparent; padding-left:0;">{{ row.course.name }}</span>
-      <span class="course-meta">
-        {{ row.n_students }} estudiantes · {{ row.n_assignments }} tareas · de {{ teacher_name(row.course.owner_teacher_id) or 'otro docente' }}
-      </span>
-      {% if row.course.id == course.id %}<span class="pill ok">actual</span>{% endif %}
-      {% if row.course.active %}<span class="pill ok">Activo</span>{% else %}<span class="pill pending">Inactivo</span>{% endif %}
-      <div class="course-row-actions">
-        <span class="hint" style="margin:0;">Solo su dueño puede editarlo</span>
-      </div>
-    </div>
-    {% endif %}
+    <p class="hint" style="padding:0 20px 16px;">Todavía no tienes cursos propios.</p>
     {% endfor %}
   </div>
 </div>
+
+{% if other_groups %}
+<div class="other-courses-section">
+  <div class="section-heading">Cursos de otros docentes</div>
+  <p class="hint" style="margin:0 0 14px;">
+    Solo puedes revisar sus informes por tarea (notas y anotaciones de video) — no puedes editarlos.
+  </p>
+
+  {% for teacher_display_name, teacher_rows in other_groups %}
+  <div class="teacher-group">
+    <div class="teacher-group-name">{{ teacher_display_name }}</div>
+    {% for row in teacher_rows %}
+    <div class="other-course-card">
+      <div class="other-course-top">
+        <span class="other-course-name">{{ row.course.name }}</span>
+        <span class="course-meta">
+          {{ row.n_students }} estudiantes · {{ row.assignments|length }} tarea{{ 's' if row.assignments|length != 1 else '' }}
+        </span>
+        {% if not row.course.active %}<span class="pill pending">Inactivo</span>{% endif %}
+      </div>
+      {% if row.assignments %}
+      <div class="other-course-tasks">
+        {% for a in row.assignments %}
+        <a class="task-chip" href="/assignments/{{ a.id }}/report">
+          {{ a.name }}
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </a>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="hint" style="margin:8px 0 0;">Todavía no tiene tareas.</p>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
 
 {% endblock %}

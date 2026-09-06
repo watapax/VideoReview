@@ -92,21 +92,6 @@ app.mount("/static", StaticFiles(directory=os.path.join(APP_DIR, "static")), nam
 templates = Jinja2Templates(directory=os.path.join(APP_DIR, "templates"))
 
 
-def _teacher_display_name(teacher_id):
-    """Helper expuesto a los templates (ver base.html) para mostrar de quién
-    es un curso sin tener que agregar esa consulta en cada ruta que lo
-    renderiza — abre su propia sesión corta, ya que para cuando Jinja
-    renderiza la sesión de la ruta ya se cerró."""
-    if teacher_id is None:
-        return None
-    with Session(engine) as session:
-        teacher = session.get(Teacher, teacher_id)
-        return teacher.name if teacher else None
-
-
-templates.env.globals["teacher_name"] = _teacher_display_name
-
-
 @app.on_event("startup")
 def on_startup() -> None:
     init_db()
@@ -120,15 +105,29 @@ def initials(name: str) -> str:
     return letters or "?"
 
 
-def current_course(session: Session, request: Request) -> tuple[Course, list[Course]]:
-    """Curso activo de esta sesión + la lista de cursos activos para el selector.
+def my_courses(session: Session, request: Request) -> list[Course]:
+    """Cursos activos que el docente en sesión puede editar: los suyos, más
+    los huérfanos sin dueño de una instalación anterior a que existieran las
+    cuentas (ver can_edit_course). Son los ÚNICOS que aparecen en el
+    selector "Curso" de la barra lateral y en los que se puede navegar
+    (Tareas, Estudiantes, Corregir, Rúbrica, Videos) — de un curso de otro
+    docente lo único visible es su informe por tarea (ver /courses, sección
+    "Cursos de otros docentes", y /assignments/{id}/report)."""
+    all_active = session.exec(select(Course).where(Course.active == True).order_by(Course.name)).all()  # noqa: E712
+    return [c for c in all_active if can_edit_course(request, c)]
 
-    Si la sesión no tiene un curso elegido (o el guardado ya no existe/está
-    inactivo), elige el primero disponible y lo deja guardado.
+
+def current_course(session: Session, request: Request) -> tuple[Course, list[Course]]:
+    """Curso activo de esta sesión + la lista de TUS cursos para el selector
+    (ver my_courses — nunca incluye cursos de otro docente).
+
+    Si la sesión no tiene un curso elegido (o el guardado ya no existe, está
+    inactivo, o es de otro docente), elige el primero disponible entre los
+    tuyos y lo deja guardado.
     """
-    courses = session.exec(select(Course).where(Course.active == True).order_by(Course.name)).all()  # noqa: E712
+    courses = my_courses(session, request)
     if not courses:
-        course = Course(name="Curso 1", active=True)
+        course = Course(name="Mi curso", active=True, owner_teacher_id=request.session.get("teacher_id"))
         session.add(course)
         session.commit()
         session.refresh(course)
@@ -193,6 +192,19 @@ def require_course_owner(session: Session, request: Request, course: "Course | N
     return RedirectResponse(
         url=f"{redirect_url}{sep}msg=No puedes editar un curso de otro docente.", status_code=303
     )
+
+
+def require_own_assignment_view(session: Session, request: Request, assignment: "Assignment"):
+    """De un curso de otro docente, lo único que se puede ver es su informe
+    por tarea (/assignments/{id}/report, ver /courses → "Cursos de otros
+    docentes"). Esta función va al principio de las pantallas de Corregir,
+    Rúbrica y Ver video/anotar — que son de edición, no de solo lectura —
+    para mandar a cualquiera que no sea el dueño directo al informe de esa
+    tarea en vez de mostrarle el formulario. Devuelve None si puede seguir."""
+    course = session.get(Course, assignment.course_id)
+    if course is not None and not can_edit_course(request, course):
+        return RedirectResponse(url=f"/assignments/{assignment.id}/report", status_code=303)
+    return None
 
 
 # ---------------------------------------------------------------- auth ----
@@ -370,31 +382,52 @@ async def assignment_new_submit(request: Request):
 
 @app.get("/courses")
 def courses_list(request: Request):
+    """"Mis cursos": lista editable de siempre (renombrar/activar). "Cursos
+    de otros docentes": lista de solo lectura, agrupada por docente, con
+    cada tarea del curso linkeando directo a su informe — es lo único que
+    se puede ver de un curso ajeno (ver require_own_assignment_view)."""
     redirect = require_login(request)
     if redirect:
         return redirect
     with Session(engine) as session:
         course, courses = current_course(session, request)
         all_courses = session.exec(select(Course).order_by(Course.name)).all()
-        counts = []
+
+        my_rows = []
+        other_by_teacher: dict[str, list[dict]] = {}
         for c in all_courses:
             n_students = len(
                 session.exec(
                     select(Student).where(Student.course_id == c.id, Student.active == True)  # noqa: E712
                 ).all()
             )
-            n_assignments = len(session.exec(select(Assignment).where(Assignment.course_id == c.id)).all())
-            counts.append(
-                {
-                    "course": c,
-                    "n_students": n_students,
-                    "n_assignments": n_assignments,
-                    "can_edit": can_edit_course(request, c),
-                }
-            )
+            if can_edit_course(request, c):
+                n_assignments = len(session.exec(select(Assignment).where(Assignment.course_id == c.id)).all())
+                my_rows.append({"course": c, "n_students": n_students, "n_assignments": n_assignments})
+            else:
+                assignments = session.exec(
+                    select(Assignment).where(Assignment.course_id == c.id).order_by(Assignment.created_at.desc())
+                ).all()
+                owner = session.get(Teacher, c.owner_teacher_id) if c.owner_teacher_id else None
+                owner_name = owner.name if owner else "Otro docente"
+                other_by_teacher.setdefault(owner_name, []).append(
+                    {"course": c, "n_students": n_students, "assignments": assignments}
+                )
+
+        other_groups = sorted(other_by_teacher.items(), key=lambda kv: kv[0].lower())
+        for _, teacher_rows in other_groups:
+            teacher_rows.sort(key=lambda r: r["course"].name.lower())
+
     return templates.TemplateResponse(
         "courses.html",
-        {"request": request, "active": "courses", "course": course, "courses": courses, "rows": counts},
+        {
+            "request": request,
+            "active": "courses",
+            "course": course,
+            "courses": courses,
+            "my_rows": my_rows,
+            "other_groups": other_groups,
+        },
     )
 
 
@@ -464,7 +497,10 @@ def courses_switch(request: Request, course_id: int):
         return redirect
     with Session(engine) as session:
         c = session.get(Course, course_id)
-        if c and c.active:
+        # Solo se puede cambiar el curso activo de la barra lateral a uno
+        # propio (o huérfano) — un curso de otro docente nunca se navega,
+        # solo se ve su informe por tarea (ver /courses).
+        if c and c.active and can_edit_course(request, c):
             set_current_course(request, c.id)
     return RedirectResponse(url="/", status_code=303)
 
@@ -480,6 +516,10 @@ def rubric_form(assignment_id: int, request: Request):
         assignment = session.get(Assignment, assignment_id)
         if not assignment:
             return RedirectResponse(url="/?msg=Esa tarea no existe.", status_code=303)
+
+        redirect_ro = require_own_assignment_view(session, request, assignment)
+        if redirect_ro:
+            return redirect_ro
 
         set_current_course(request, assignment.course_id)
         course, courses = current_course(session, request)
@@ -685,6 +725,10 @@ def grading_screen(assignment_id: int, request: Request):
         assignment = session.get(Assignment, assignment_id)
         if not assignment:
             return RedirectResponse(url="/?msg=Esa tarea no existe.", status_code=303)
+
+        redirect_ro = require_own_assignment_view(session, request, assignment)
+        if redirect_ro:
+            return redirect_ro
 
         # Al abrir una tarea, el curso activo de la sesión pasa a ser el de esa tarea
         # (así el resto de la navegación - Estudiantes, Rúbrica - queda consistente).
@@ -990,6 +1034,16 @@ def _report_ctx(session: Session, assignment: Assignment, base_url: str):
 
 @app.get("/assignments/{assignment_id}/report")
 def report(assignment_id: int, request: Request):
+    """El informe es la ÚNICA pantalla de un curso ajeno que un docente
+    puede abrir (ver require_own_assignment_view y la sección "Cursos de
+    otros docentes" en /courses) — por eso, a diferencia del resto de
+    rutas, no depende de current_course() para saber de qué curso mostrar
+    datos (ese siempre ignora los cursos ajenos): el curso se busca
+    directo por assignment.course_id. Cuando SÍ es tu curso, además se deja
+    la barra lateral apuntando ahí, como antes; cuando es de otro docente
+    no se toca la selección de curso de la sesión, y no se genera el link
+    público para compartir ni se muestra el botón (no es tuyo para
+    compartirlo)."""
     redirect = require_login(request)
     if redirect:
         return redirect
@@ -999,12 +1053,20 @@ def report(assignment_id: int, request: Request):
         if not assignment:
             return RedirectResponse(url="/?msg=Esa tarea no existe.", status_code=303)
 
-        set_current_course(request, assignment.course_id)
-        course, _courses = current_course(session, request)
+        report_course = session.get(Course, assignment.course_id)
+        can_edit = can_edit_course(request, report_course) if report_course else False
+        owner_name = None
+        if report_course and not can_edit and report_course.owner_teacher_id:
+            owner = session.get(Teacher, report_course.owner_teacher_id)
+            owner_name = owner.name if owner else None
+        if can_edit:
+            set_current_course(request, assignment.course_id)
 
         base_url = str(request.base_url).rstrip("/")
         students_ctx, aspects_meta = _report_ctx(session, assignment, base_url)
-        report_share_url = base_url + f"/report/{get_or_create_report_share_token(session, assignment.id)}"
+        report_share_url = None
+        if can_edit:
+            report_share_url = base_url + f"/report/{get_or_create_report_share_token(session, assignment.id)}"
 
         # students_ctx completo (aspectos + videos + anotaciones) va como
         # JSON embebido para que el detalle y el video de cada estudiante se
@@ -1024,12 +1086,14 @@ def report(assignment_id: int, request: Request):
             {
                 "request": request,
                 "assignment": assignment,
-                "course_name": course.name,
+                "course_name": report_course.name if report_course else "",
                 "students": students_ctx,
                 "report_data_json": report_data_json,
                 "scale_min_display": str(int(SCALE_MIN)),
                 "scale_max_display": str(int(SCALE_MAX)),
                 "report_share_url": report_share_url,
+                "can_edit": can_edit,
+                "owner_name": owner_name,
             },
         )
 
@@ -1295,6 +1359,10 @@ def video_review(video_id: int, request: Request):
         student = session.get(Student, video.student_id)
         if not assignment or not student:
             return RedirectResponse(url="/?msg=Ese video no existe.", status_code=303)
+
+        redirect_ro = require_own_assignment_view(session, request, assignment)
+        if redirect_ro:
+            return redirect_ro
 
         set_current_course(request, assignment.course_id)
         course, courses = current_course(session, request)

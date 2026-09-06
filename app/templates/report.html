@@ -178,8 +178,15 @@
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
         Volver a Corregir
       </a>
+      {% elif request.session.get('teacher_id') %}
+      {# Informe de un curso de otro docente: no hay "Corregir" al que volver
+         (ver require_own_assignment_view) — vuelve a la lista de cursos. #}
+      <a class="back-to-app-link" href="/courses">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        Volver a Cursos
+      </a>
       {% endif %}
-      <div class="eyebrow">{{ course_name }}</div>
+      <div class="eyebrow">{{ course_name }}{% if owner_name %} · de {{ owner_name }}{% endif %}</div>
       <div class="topbar-title">
         <span id="crumb-assignment">{{ assignment.name }}</span><span class="sep">·</span><span id="crumb-view">Notas finales</span>
       </div>
