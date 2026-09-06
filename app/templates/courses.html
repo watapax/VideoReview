@@ -49,6 +49,9 @@
           <div class="course-row-actions">
             <button type="submit" class="btn secondary">Guardar nombre</button>
             <button type="submit" formaction="/courses/{{ row.course.id }}/toggle" class="btn secondary">{{ 'Desactivar' if row.course.active else 'Activar' }}</button>
+            <button type="submit" formaction="/courses/{{ row.course.id }}/delete" class="btn secondary danger course-delete-btn" data-course-name="{{ row.course.name }}" title="Eliminar curso">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+            </button>
           </div>
         </form>
         {% endfor %}
@@ -117,6 +120,24 @@
       btn.setAttribute('aria-selected', 'true');
       var panel = document.querySelector('.courses-tab-panel[data-panel="' + btn.dataset.tab + '"]');
       if (panel) panel.classList.add('active');
+    });
+  });
+
+  // Confirma antes de eliminar un curso -- es el único botón destructivo de
+  // esta tarjeta (Guardar nombre / Activar-Desactivar no lo son), así que se
+  // detecta con event.submitter en vez de un onsubmit fijo del form entero.
+  // Se arma el texto en JS (no interpolado en el HTML) para no pelear con
+  // comillas si el nombre del curso las tiene.
+  document.querySelectorAll('.my-course-card').forEach(function (form) {
+    form.addEventListener('submit', function (e) {
+      var submitter = e.submitter;
+      if (!submitter || !submitter.classList.contains('course-delete-btn')) return;
+      var name = submitter.dataset.courseName || 'este curso';
+      var ok = confirm(
+        'Eliminar el curso "' + name + '" -- se van a borrar sus estudiantes, tareas, rúbrica, ' +
+        'notas y videos. Esta acción no se puede deshacer. ¿Continuar?'
+      );
+      if (!ok) e.preventDefault();
     });
   });
 })();

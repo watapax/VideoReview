@@ -511,6 +511,70 @@ def courses_toggle(course_id: int, request: Request):
     return RedirectResponse(url="/courses", status_code=303)
 
 
+@app.post("/courses/{course_id}/delete")
+def courses_delete(course_id: int, request: Request):
+    """Elimina un curso por completo -- estudiantes, tareas, rúbrica, notas,
+    videos (y sus anotaciones/links compartidos) y el link del informe. No
+    hay forma de deshacerlo (por eso el botón pide confirmar en el navegador,
+    ver courses.html), a diferencia de "Desactivar" que solo lo oculta pero
+    conserva todo. Si era el único curso del docente, current_course() le
+    crea uno nuevo en blanco solo, la próxima vez que abra cualquier
+    pantalla -- no hace falta manejarlo acá."""
+    redirect = require_login(request)
+    if redirect:
+        return redirect
+    with Session(engine) as session:
+        c = session.get(Course, course_id)
+        denied = require_course_owner(session, request, c, "/courses")
+        if denied:
+            return denied
+        if not c:
+            return RedirectResponse(url="/courses", status_code=303)
+
+        assignment_ids = [
+            a.id for a in session.exec(select(Assignment).where(Assignment.course_id == course_id)).all()
+        ]
+        video_keys: list[str] = []
+
+        if assignment_ids:
+            videos = session.exec(select(Video).where(Video.assignment_id.in_(assignment_ids))).all()
+            video_ids = [v.id for v in videos]
+            video_keys = [v.object_key for v in videos]
+
+            if video_ids:
+                for a in session.exec(select(Annotation).where(Annotation.video_id.in_(video_ids))).all():
+                    session.delete(a)
+            for vs in session.exec(select(VideoShare).where(VideoShare.assignment_id.in_(assignment_ids))).all():
+                session.delete(vs)
+            for rs in session.exec(select(ReportShare).where(ReportShare.assignment_id.in_(assignment_ids))).all():
+                session.delete(rs)
+            for v in videos:
+                session.delete(v)
+            for g in session.exec(select(Grade).where(Grade.assignment_id.in_(assignment_ids))).all():
+                session.delete(g)
+            for asp in session.exec(select(RubricAspect).where(RubricAspect.assignment_id.in_(assignment_ids))).all():
+                session.delete(asp)
+            for a in session.exec(select(Assignment).where(Assignment.course_id == course_id)).all():
+                session.delete(a)
+
+        for s in session.exec(select(Student).where(Student.course_id == course_id)).all():
+            session.delete(s)
+
+        course_name = c.name
+        session.delete(c)
+        session.commit()
+
+    # El video en sí (en R2) se borra DESPUÉS de confirmar que la fila de la
+    # base de datos ya quedó eliminada -- mismo orden que /videos/{id}/delete,
+    # para no dejar filas huérfanas si el borrado en R2 fallara a mitad de
+    # camino.
+    if video_keys and storage.is_configured():
+        for key in video_keys:
+            storage.delete_object(key)
+
+    return RedirectResponse(url=f"/courses?msg=Curso «{course_name}» eliminado.", status_code=303)
+
+
 @app.get("/courses/switch")
 def courses_switch(request: Request, course_id: int):
     redirect = require_login(request)

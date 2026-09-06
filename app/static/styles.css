@@ -259,6 +259,10 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 .my-course-top .course-name-input { flex: 1; max-width: none; }
 .my-course-pills { display: flex; gap: 6px; }
 .my-course-card .course-row-actions { margin-left: 0; margin-top: 2px; }
+/* Botón de eliminar curso: solo ícono (sin texto) y empujado al extremo del
+   grupo -- es destructivo y poco usado, no debería competir en peso visual
+   con "Guardar nombre"/"Activar-Desactivar". */
+.course-row-actions .course-delete-btn { padding: 9px 11px; margin-left: auto; flex-shrink: 0; }
 
 /* "Cursos de otros docentes": agrupados por docente (avatar + nombre), sus
    cursos como tarjetas de solo lectura en grilla — pensado para crecer
