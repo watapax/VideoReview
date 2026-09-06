@@ -6,7 +6,7 @@
   <title>Informe · {{ assignment.name }}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap">
-  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="/static/styles.css?v={{ asset_version('styles.css') }}">
   <style>
     /* Informe de curso, fase 9: en vez de un documento largo que crece hacia
        abajo (el diseño anterior, pensado para imprimir), esto es una
@@ -154,6 +154,16 @@
     .ac-score.band-pending { background: transparent; color: var(--muted-2); border: 1px solid var(--border-strong); }
     .ac-feedback { font-size: 15.5px; line-height: 1.75; color: var(--text); opacity: .92; }
     .ac-feedback.empty { color: var(--muted-2); font-style: italic; opacity: 1; }
+    /* Botón "Ver video de este ámbito" -- solo aparece cuando el docente
+       vinculó un video a este aspecto (Video.rubric_aspect_id, ver
+       /videos/{id}/aspect en main.py). */
+    .ac-video-btn {
+      display: inline-flex; align-items: center; gap: 7px; align-self: flex-start;
+      border: 1px solid var(--border-strong); border-radius: 999px; padding: 7px 14px 7px 11px;
+      font-size: 12.5px; font-weight: 700; color: var(--pc); background: transparent; cursor: pointer;
+      transition: background .15s ease; font-family: inherit;
+    }
+    .ac-video-btn:hover { background: var(--accent-soft); }
 
     /* ---------------------------------------------------------- video view - */
     /* El video en sí reusa exactamente los mismos componentes que
@@ -369,18 +379,37 @@
       var card = document.createElement('div');
       card.className = 'aspect-card';
       card.style.setProperty('--pc', pc);
+      var videoBtn = (a.video_index != null)
+        ? '<button type="button" class="ac-video-btn" data-video-index="' + a.video_index + '">' +
+            '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>' +
+            'Ver video de este ámbito' +
+          '</button>'
+        : '';
       card.innerHTML =
         '<div class="ac-head">' +
           '<div class="ac-name">' + meta.name + '</div>' +
           '<div class="ac-weight">ponderación ' + meta.weight_display + '%</div>' +
           '<div class="ac-score band-' + a.band + '">' + a.score_display + '</div>' +
         '</div>' +
-        '<div class="ac-feedback' + (a.feedback ? '' : ' empty') + '">' + (a.feedback || 'Sin feedback registrado.') + '</div>';
+        '<div class="ac-feedback' + (a.feedback ? '' : ' empty') + '">' + (a.feedback || 'Sin feedback registrado.') + '</div>' +
+        videoBtn;
       aspectsGrid.appendChild(card);
     });
 
     setView('detail');
   }
+
+  // Botón "Ver video de este ámbito" dentro de una tarjeta de aspecto (ver
+  // arriba) -- salta directo al video vinculado (Video.rubric_aspect_id, ver
+  // /videos/{id}/aspect en main.py) en vez de abrir la lista completa de
+  // videos y adivinar cuál corresponde. Delegado en aspectsGrid porque las
+  // tarjetas se recrean por completo en cada showDetail().
+  aspectsGrid.addEventListener('click', function (e) {
+    var btn = e.target.closest('.ac-video-btn');
+    if (!btn) return;
+    showVideoAt(parseInt(btn.dataset.videoIndex, 10));
+    setView('video');
+  });
 
   document.getElementById('back-to-grades-btn').addEventListener('click', function () { setView('grades'); });
 

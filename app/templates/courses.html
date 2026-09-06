@@ -8,76 +8,118 @@
   <div class="flash" style="border-color:var(--danger);">{{ request.query_params.get('msg') }}</div>
 {% endif %}
 
-<div class="row" style="align-items:flex-start;">
-  <div class="card" style="max-width:340px;">
-    <h3 style="margin-top:0; font-size:14px;">Nuevo curso</h3>
-    <form method="post" action="/courses/new">
-      <div class="field">
-        <label for="name">Nombre</label>
-        <input type="text" id="name" name="name" placeholder="Ej: Animación 2D - Sección 2" required autofocus>
-      </div>
-      <button class="btn" type="submit">Crear curso</button>
-    </form>
-    <p class="hint" style="margin-top:14px;">
-      Al crear una tarea en este curso, defines la rúbrica de esa tarea (cada tarea tiene la suya).
-    </p>
-  </div>
-
-  <div class="card" style="padding:0; flex:2;">
-    <div class="section-heading">Mis cursos</div>
-    {% for row in my_rows %}
-    <form method="post" action="/courses/{{ row.course.id }}/rename" class="course-row">
-      <input type="text" name="name" value="{{ row.course.name }}" class="course-name-input">
-      <span class="course-meta">{{ row.n_students }} estudiantes · {{ row.n_assignments }} tareas</span>
-      {% if row.course.id == course.id %}<span class="pill ok">actual</span>{% endif %}
-      {% if row.course.active %}<span class="pill ok">Activo</span>{% else %}<span class="pill pending">Inactivo</span>{% endif %}
-      <div class="course-row-actions">
-        <button type="submit" class="btn secondary">Guardar nombre</button>
-        <button type="submit" formaction="/courses/{{ row.course.id }}/toggle" class="btn secondary">{{ 'Desactivar' if row.course.active else 'Activar' }}</button>
-      </div>
-    </form>
-    {% else %}
-    <p class="hint" style="padding:0 20px 16px;">Todavía no tienes cursos propios.</p>
-    {% endfor %}
-  </div>
+<div class="courses-tabs" role="tablist">
+  <button type="button" class="courses-tab-btn active" data-tab="mine" role="tab" aria-selected="true">
+    Mis cursos <span class="tab-count">{{ my_rows|length }}</span>
+  </button>
+  <button type="button" class="courses-tab-btn" data-tab="others" role="tab" aria-selected="false">
+    Cursos de otros docentes <span class="tab-count">{{ other_groups|map(attribute='rows')|map('length')|sum }}</span>
+  </button>
 </div>
 
-{% if other_groups %}
-<div class="other-courses-section">
-  <div class="section-heading">Cursos de otros docentes</div>
-  <p class="hint" style="margin:0 0 14px;">
-    Solo puedes revisar sus informes por tarea (notas y anotaciones de video) — no puedes editarlos.
-  </p>
+<div class="courses-tab-panel active" data-panel="mine">
+  <div class="row" style="align-items:flex-start;">
+    <div class="card" style="max-width:320px; flex:none;">
+      <h3 style="margin-top:0; font-size:14px;">Nuevo curso</h3>
+      <form method="post" action="/courses/new">
+        <div class="field">
+          <label for="name">Nombre</label>
+          <input type="text" id="name" name="name" placeholder="Ej: Animación 2D - Sección 2" required autofocus>
+        </div>
+        <button class="btn" type="submit">Crear curso</button>
+      </form>
+      <p class="hint" style="margin-top:14px;">
+        Al crear una tarea en este curso, defines la rúbrica de esa tarea (cada tarea tiene la suya).
+      </p>
+    </div>
 
-  {% for teacher_display_name, teacher_rows in other_groups %}
-  <div class="teacher-group">
-    <div class="teacher-group-name">{{ teacher_display_name }}</div>
-    {% for row in teacher_rows %}
-    <div class="other-course-card">
-      <div class="other-course-top">
-        <span class="other-course-name">{{ row.course.name }}</span>
-        <span class="course-meta">
-          {{ row.n_students }} estudiantes · {{ row.assignments|length }} tarea{{ 's' if row.assignments|length != 1 else '' }}
-        </span>
-        {% if not row.course.active %}<span class="pill pending">Inactivo</span>{% endif %}
-      </div>
-      {% if row.assignments %}
-      <div class="other-course-tasks">
-        {% for a in row.assignments %}
-        <a class="task-chip" href="/assignments/{{ a.id }}/report">
-          {{ a.name }}
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-        </a>
+    <div style="flex:1; min-width:0;">
+      {% if my_rows %}
+      <div class="my-courses-grid">
+        {% for row in my_rows %}
+        <form method="post" action="/courses/{{ row.course.id }}/rename" class="my-course-card">
+          <div class="my-course-top">
+            <input type="text" name="name" value="{{ row.course.name }}" class="course-name-input">
+          </div>
+          <div class="my-course-pills">
+            {% if row.course.id == course.id %}<span class="pill ok">actual</span>{% endif %}
+            {% if row.course.active %}<span class="pill ok">Activo</span>{% else %}<span class="pill pending">Inactivo</span>{% endif %}
+          </div>
+          <span class="course-meta">{{ row.n_students }} estudiantes · {{ row.n_assignments }} tareas</span>
+          <div class="course-row-actions">
+            <button type="submit" class="btn secondary">Guardar nombre</button>
+            <button type="submit" formaction="/courses/{{ row.course.id }}/toggle" class="btn secondary">{{ 'Desactivar' if row.course.active else 'Activar' }}</button>
+          </div>
+        </form>
         {% endfor %}
       </div>
       {% else %}
-      <p class="hint" style="margin:8px 0 0;">Todavía no tiene tareas.</p>
+      <div class="card"><p class="hint" style="margin:0;">Todavía no tienes cursos propios.</p></div>
       {% endif %}
     </div>
-    {% endfor %}
+  </div>
+</div>
+
+<div class="courses-tab-panel" data-panel="others">
+  {% if other_groups %}
+  <p class="hint" style="margin:0 0 18px;">
+    Solo puedes revisar sus informes por tarea (notas y anotaciones de video) — no puedes editarlos.
+  </p>
+  {% for group in other_groups %}
+  <div class="teacher-group">
+    <div class="teacher-group-header">
+      <div class="teacher-avatar">{{ group.teacher_initials }}</div>
+      <div class="teacher-group-name">{{ group.teacher_name }}</div>
+      <span class="course-meta">{{ group.rows|length }} curso{{ 's' if group.rows|length != 1 else '' }}</span>
+    </div>
+    <div class="other-courses-grid">
+      {% for row in group.rows %}
+      <div class="other-course-card">
+        <div class="other-course-top">
+          <span class="other-course-name">{{ row.course.name }}</span>
+          {% if not row.course.active %}<span class="pill pending">Inactivo</span>{% endif %}
+        </div>
+        <span class="course-meta">
+          {{ row.n_students }} estudiantes · {{ row.assignments|length }} tarea{{ 's' if row.assignments|length != 1 else '' }}
+        </span>
+        {% if row.assignments %}
+        <div class="other-course-tasks">
+          {% for a in row.assignments %}
+          <a class="task-chip" href="/assignments/{{ a.id }}/report">
+            {{ a.name }}
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          </a>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="hint" style="margin:2px 0 0;">Todavía no tiene tareas.</p>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
   </div>
   {% endfor %}
+  {% else %}
+  <div class="card"><p class="hint" style="margin:0;">Todavía no hay cursos de otros docentes.</p></div>
+  {% endif %}
 </div>
-{% endif %}
+
+<script>
+(function () {
+  var tabs = document.querySelectorAll('.courses-tab-btn');
+  var panels = document.querySelectorAll('.courses-tab-panel');
+  tabs.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      if (btn.classList.contains('active')) return;
+      tabs.forEach(function (b) { b.classList.remove('active'); b.setAttribute('aria-selected', 'false'); });
+      panels.forEach(function (p) { p.classList.remove('active'); });
+      btn.classList.add('active');
+      btn.setAttribute('aria-selected', 'true');
+      var panel = document.querySelector('.courses-tab-panel[data-panel="' + btn.dataset.tab + '"]');
+      if (panel) panel.classList.add('active');
+    });
+  });
+})();
+</script>
 
 {% endblock %}

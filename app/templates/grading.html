@@ -100,7 +100,6 @@
       <div class="videos-grid">
         {% for v in videos %}
         <div class="card video-card">
-          <video controls preload="none" src="/videos/{{ v.id }}/stream"></video>
           <div class="video-card-body">
             <div class="video-card-title-row" id="video-title-row-{{ v.id }}">
               <div class="video-card-title">{{ v.label }}</div>
@@ -120,6 +119,20 @@
             <div class="video-card-meta">
               {{ v.size_display }}{% if v.size_display %} · {% endif %}subido {{ v.uploaded_display }}
               {% if v.annotation_count %} · {{ v.annotation_count }} anotación{{ 'es' if v.annotation_count != 1 else '' }}{% endif %}
+            </div>
+            <div class="video-aspect-row">
+              {% if can_edit %}
+              <form method="post" action="/videos/{{ v.id }}/aspect" class="video-aspect-form">
+                <select name="aspect_id" class="video-aspect-select" onchange="this.form.requestSubmit()" {{ 'disabled' if not aspects else '' }}>
+                  <option value="">Sin vincular a un ámbito</option>
+                  {% for a in aspects %}
+                  <option value="{{ a.id }}" {{ 'selected' if v.rubric_aspect_id == a.id else '' }}>{{ a.name }}</option>
+                  {% endfor %}
+                </select>
+              </form>
+              {% else %}
+              <span class="pill {{ 'ok' if v.aspect_name else 'pending' }}">{{ v.aspect_name if v.aspect_name else 'Sin vincular' }}</span>
+              {% endif %}
             </div>
             <a href="/videos/{{ v.id }}" class="btn" style="width:100%; justify-content:center; margin-bottom:8px;">{{ 'Anotar' if can_edit else 'Ver anotaciones' }}</a>
             {% if can_edit %}

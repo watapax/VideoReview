@@ -91,6 +91,24 @@ app.add_middleware(SessionMiddleware, secret_key=os.environ.get("SECRET_KEY", "d
 app.mount("/static", StaticFiles(directory=os.path.join(APP_DIR, "static")), name="static")
 templates = Jinja2Templates(directory=os.path.join(APP_DIR, "templates"))
 
+_STATIC_DIR = os.path.join(APP_DIR, "static")
+
+
+def _asset_version(filename: str) -> str:
+    """Cache-busting para /static/<filename>: agrega ?v=<mtime> al link en
+    vez de un número fijo que haya que acordarse de subir a mano — así una
+    actualización de styles.css (o cualquier estático) no se queda pegada
+    en el caché del navegador del docente después de actualizar el server
+    (por eso un rediseño puede verse "sin estilos" hasta hacer refresh
+    forzado, si no se hace este cache-busting)."""
+    try:
+        return str(int(os.path.getmtime(os.path.join(_STATIC_DIR, filename))))
+    except OSError:
+        return "0"
+
+
+templates.env.globals["asset_version"] = _asset_version
+
 
 @app.on_event("startup")
 def on_startup() -> None:
@@ -414,9 +432,12 @@ def courses_list(request: Request):
                     {"course": c, "n_students": n_students, "assignments": assignments}
                 )
 
-        other_groups = sorted(other_by_teacher.items(), key=lambda kv: kv[0].lower())
-        for _, teacher_rows in other_groups:
+        other_groups = []
+        for owner_name, teacher_rows in sorted(other_by_teacher.items(), key=lambda kv: kv[0].lower()):
             teacher_rows.sort(key=lambda r: r["course"].name.lower())
+            other_groups.append(
+                {"teacher_name": owner_name, "teacher_initials": initials(owner_name), "rows": teacher_rows}
+            )
 
     return templates.TemplateResponse(
         "courses.html",
@@ -793,6 +814,7 @@ def grading_screen(assignment_id: int, request: Request):
                 .where(Video.assignment_id == assignment_id, Video.student_id == current["id"])
                 .order_by(Video.uploaded_at)
             ).all()
+            aspect_names_by_id = {a["id"]: a["name"] for a in aspects_ctx}
             for v in videos:
                 ann_count = len(session.exec(select(Annotation).where(Annotation.video_id == v.id)).all())
                 videos_ctx.append(
@@ -802,6 +824,8 @@ def grading_screen(assignment_id: int, request: Request):
                         "size_display": fmt_size(v.size_bytes),
                         "uploaded_display": fmt_date_es(v.uploaded_at),
                         "annotation_count": ann_count,
+                        "rubric_aspect_id": v.rubric_aspect_id,
+                        "aspect_name": aspect_names_by_id.get(v.rubric_aspect_id),
                     }
                 )
             # Un solo link por tarea+estudiante (no por video: puede haber más
@@ -974,6 +998,16 @@ def _report_ctx(session: Session, assignment: Assignment, base_url: str):
         if grade is not None:
             pct = max(0.0, min(100.0, (grade - SCALE_MIN) / (SCALE_MAX - SCALE_MIN) * 100))
 
+        student_videos = videos_by_student.get(s.id, [])
+        # aspecto -> índice (en s.videos, ver más abajo) del primer video
+        # vinculado a él (Video.rubric_aspect_id) -- así la tarjeta de ese
+        # aspecto en el informe puede ofrecer "Ver video" directo, sin que el
+        # profesor tenga que adivinar cuál de los videos subidos corresponde.
+        video_index_by_aspect: dict[int, int] = {}
+        for idx, v in enumerate(student_videos):
+            if v.rubric_aspect_id is not None and v.rubric_aspect_id not in video_index_by_aspect:
+                video_index_by_aspect[v.rubric_aspect_id] = idx
+
         student_aspects = []
         for a in aspects:
             g = grades_by_student.get(s.id, {}).get(a.id)
@@ -983,11 +1017,11 @@ def _report_ctx(session: Session, assignment: Assignment, base_url: str):
                     "score_display": fmt(score) if score is not None else "—",
                     "band": band(score),
                     "feedback": g.feedback if g else "",
+                    "video_index": video_index_by_aspect.get(a.id),
                 }
             )
 
         videos_ctx = []
-        student_videos = videos_by_student.get(s.id, [])
         if student_videos:
             # Mismo token que usaba el botón "Videos" de antes -- ya sirve
             # tanto para el profesor logueado como para el link público del
@@ -1332,6 +1366,122 @@ async def video_rename(video_id: int, request: Request):
     )
 
 
+@app.post("/videos/{video_id}/aspect")
+async def video_set_aspect(video_id: int, request: Request):
+    """Vincula (o desvincula, si llega vacío) un video a un aspecto de la
+    rúbrica de su tarea — ver Video.rubric_aspect_id. Se usa desde el
+    dropdown de cada video en la pestaña Videos (grading.html); el informe
+    (report.html) y la pantalla de anotar (video_review.html) muestran el
+    feedback/nota de ese aspecto junto al video una vez vinculado."""
+    redirect = require_login(request)
+    if redirect:
+        return redirect
+
+    form = await request.form()
+    raw_aspect_id = (form.get("aspect_id") or "").strip()
+
+    with Session(engine) as session:
+        video = session.get(Video, video_id)
+        if not video:
+            return RedirectResponse(url="/", status_code=303)
+        denied = require_course_owner(
+            session, request, _course_for_video(session, video), f"/assignments/{video.assignment_id}"
+        )
+        if denied:
+            return denied
+
+        assignment_id, student_id = video.assignment_id, video.student_id
+        if not raw_aspect_id:
+            video.rubric_aspect_id = None
+        else:
+            try:
+                aspect_id = int(raw_aspect_id)
+            except ValueError:
+                aspect_id = None
+            aspect = session.get(RubricAspect, aspect_id) if aspect_id is not None else None
+            # Solo se acepta un aspecto de la MISMA tarea del video — evita
+            # que un id manipulado a mano vincule un aspecto de otra tarea.
+            if aspect and aspect.assignment_id == video.assignment_id:
+                video.rubric_aspect_id = aspect.id
+        session.add(video)
+        session.commit()
+
+    # El mismo dropdown se usa desde dos pantallas (pestaña Videos y la de
+    # anotar, ver video_review.html) — return_to dice a cuál volver, para no
+    # sacar al docente de donde estaba solo por vincular un aspecto.
+    if form.get("return_to") == "review":
+        return RedirectResponse(url=f"/videos/{video_id}", status_code=303)
+    return RedirectResponse(
+        url=f"/assignments/{assignment_id}?student_id={student_id}&tab=videos",
+        status_code=303,
+    )
+
+
+@app.post("/videos/{video_id}/grade")
+async def video_grade_save(video_id: int, request: Request):
+    """Guarda nota + feedback del aspecto vinculado a este video, desde la
+    pantalla de anotar (video_review.html). Escribe la MISMA fila Grade que
+    usa la pestaña Rúbrica (misma tarea+estudiante+aspecto), no una copia
+    aparte — así lo que se escribe acá aparece de inmediato en Rúbrica y en
+    el informe, y viceversa."""
+    redirect = require_login(request)
+    if redirect:
+        return redirect
+
+    form = await request.form()
+
+    with Session(engine) as session:
+        video = session.get(Video, video_id)
+        if not video:
+            return RedirectResponse(url="/", status_code=303)
+        denied = require_course_owner(
+            session, request, _course_for_video(session, video), f"/videos/{video_id}"
+        )
+        if denied:
+            return denied
+
+        if video.rubric_aspect_id is None:
+            # No debería pasar desde la interfaz normal (el campo solo se
+            # muestra con un aspecto ya vinculado), pero por si el form quedó
+            # viejo en una pestaña abierta, no rompe nada, solo no hace nada.
+            return RedirectResponse(url=f"/videos/{video_id}", status_code=303)
+
+        score_raw = (form.get("score") or "").strip()
+        feedback = (form.get("feedback") or "").strip()
+        score = None
+        if score_raw:
+            try:
+                score = float(score_raw)
+                score = max(SCALE_MIN, min(SCALE_MAX, score))
+            except ValueError:
+                score = None
+
+        existing = session.exec(
+            select(Grade).where(
+                Grade.assignment_id == video.assignment_id,
+                Grade.student_id == video.student_id,
+                Grade.aspect_id == video.rubric_aspect_id,
+            )
+        ).first()
+        if existing:
+            existing.score = score
+            existing.feedback = feedback
+            session.add(existing)
+        else:
+            session.add(
+                Grade(
+                    assignment_id=video.assignment_id,
+                    student_id=video.student_id,
+                    aspect_id=video.rubric_aspect_id,
+                    score=score,
+                    feedback=feedback,
+                )
+            )
+        session.commit()
+
+    return RedirectResponse(url=f"/videos/{video_id}", status_code=303)
+
+
 # ----------------------------------------------------------- anotaciones ----
 # Fase 2: dibujo libre sobre el video (color + grosor) y una nota de texto,
 # guardados en un momento específico (en segundos). Todavía sin línea de
@@ -1366,6 +1516,38 @@ def video_review(video_id: int, request: Request):
 
         set_current_course(request, assignment.course_id)
         course, courses = current_course(session, request)
+
+        aspects = session.exec(
+            select(RubricAspect).where(RubricAspect.assignment_id == assignment.id).order_by(RubricAspect.order)
+        ).all()
+        aspects_ctx = [{"id": a.id, "name": a.name} for a in aspects]
+
+        grade = None
+        if video.rubric_aspect_id is not None:
+            grade = session.exec(
+                select(Grade).where(
+                    Grade.assignment_id == assignment.id,
+                    Grade.student_id == student.id,
+                    Grade.aspect_id == video.rubric_aspect_id,
+                )
+            ).first()
+
+        # Videos hermanos (misma tarea + mismo estudiante — p.ej. varios
+        # intentos) para poder pasar al siguiente sin volver a la lista, tal
+        # como pidió el profesor ("pasar al siguiente video sin tener que
+        # devolverme a la sección de videos"). Es una navegación simple
+        # (recarga de página, no un SPA como el informe): la pantalla de
+        # anotar ya tiene mucho estado propio (canvas, línea de tiempo) como
+        # para además manejar el cambio de video sin recargar.
+        sibling_videos = session.exec(
+            select(Video)
+            .where(Video.assignment_id == video.assignment_id, Video.student_id == video.student_id)
+            .order_by(Video.uploaded_at)
+        ).all()
+        sibling_ids = [v.id for v in sibling_videos]
+        video_index = sibling_ids.index(video_id) if video_id in sibling_ids else 0
+        prev_video_id = sibling_ids[video_index - 1] if video_index > 0 else None
+        next_video_id = sibling_ids[video_index + 1] if video_index + 1 < len(sibling_ids) else None
 
         annotations = session.exec(
             select(Annotation).where(Annotation.video_id == video_id).order_by(Annotation.time_seconds)
@@ -1438,6 +1620,16 @@ def video_review(video_id: int, request: Request):
                 "courses": courses,
                 "share_url": share_url,
                 "can_edit": can_edit_course(request, course),
+                "aspects": aspects_ctx,
+                "grade": grade,
+                "scale_min": SCALE_MIN,
+                "scale_max": SCALE_MAX,
+                "scale_min_display": str(int(SCALE_MIN)),
+                "scale_max_display": str(int(SCALE_MAX)),
+                "prev_video_id": prev_video_id,
+                "next_video_id": next_video_id,
+                "video_position": video_index + 1,
+                "video_count": len(sibling_ids),
             },
         )
 

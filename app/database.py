@@ -144,11 +144,10 @@ def _migrate_add_course_owner() -> None:
 
     Instalaciones existentes tienen cursos sin dueño (antes solo existía un
     profesor con una contraseña única, sin cuentas). Esta migración solo
-    agrega la columna, vacía (NULL) para los cursos que ya existían — el
-    primer docente que se registra en /signup adopta esos cursos huérfanos
-    (ver la ruta /signup en main.py), no esta función: acá todavía no existe
-    ningún Teacher la primera vez que corre. Segura de correr en cada
-    arranque: si ya está migrada, no hace nada.
+    agrega la columna, vacía (NULL) para los cursos que ya existían — nadie
+    los adopta automáticamente (ver require_course_owner en main.py: el
+    primer docente que edita un curso huérfano lo reclama en ese momento).
+    Segura de correr en cada arranque: si ya está migrada, no hace nada.
     """
     conn = sqlite3.connect(DB_PATH)
     try:
@@ -162,12 +161,37 @@ def _migrate_add_course_owner() -> None:
         conn.close()
 
 
+def _migrate_add_video_aspect() -> None:
+    """Migración: agrega rubric_aspect_id a video (vincular un video a un
+    aspecto de la rúbrica).
+
+    Instalaciones existentes ya tienen la tabla video sin esta columna;
+    metadata.create_all() no la agrega sola a una tabla que ya existe. Es
+    opcional (NULL): un video no necesariamente representa evidencia de un
+    aspecto puntual — solo cuando el docente lo vincula a mano desde la
+    pestaña Videos, el informe muestra ese video junto al feedback de ese
+    aspecto (ver report.html / grading.html). Segura de correr en cada
+    arranque: si ya está migrada, no hace nada.
+    """
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        cur = conn.cursor()
+        if not _table_exists(cur, "video"):
+            return
+        if not _column_exists(cur, "video", "rubric_aspect_id"):
+            cur.execute("ALTER TABLE video ADD COLUMN rubric_aspect_id INTEGER")
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def init_db() -> None:
     SQLModel.metadata.create_all(engine)
     _migrate_add_courses()
     _migrate_rubric_to_assignments()
     _migrate_add_annotation_range()
     _migrate_add_course_owner()
+    _migrate_add_video_aspect()
 
 
 def get_session():

@@ -96,9 +96,13 @@ class Video(SQLModel, table=True):
     se guarda la referencia (object_key) y algunos metadatos para mostrar
     en la lista, no el archivo.
 
-    Es una tabla nueva (no una migración de columnas de una tabla vieja),
-    así que basta con que `init_db()` la cree vía metadata.create_all(); no
-    necesita su propia función de migración como course_id/assignment_id.
+    `rubric_aspect_id` es opcional: un video puede (o no) ser la evidencia de
+    UN aspecto puntual de la rúbrica de esa tarea (ej: el video que muestra
+    el "Timing" de un estudiante) — se vincula a mano desde la pestaña
+    Videos (ver grading.html / video_upload en main.py), y cuando está
+    vinculado, el informe (report.html) lo muestra junto al feedback de ese
+    aspecto para ese estudiante. Ver _migrate_add_video_aspect() en
+    database.py para instalaciones existentes.
     """
 
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -108,6 +112,7 @@ class Video(SQLModel, table=True):
     object_key: str
     original_filename: str = ""
     size_bytes: int = 0
+    rubric_aspect_id: Optional[int] = Field(default=None, foreign_key="rubricaspect.id", index=True)
     uploaded_at: datetime = Field(default_factory=datetime.utcnow)
 
 
