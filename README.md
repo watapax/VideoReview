@@ -59,14 +59,17 @@ contenedor.
 - **Corregir** (`/assignments/{id}`): pantalla de corrección — elige un
   estudiante, pon nota y feedback en cada aspecto, la nota final se
   calcula sola.
-- **Informe de curso** (`/assignments/{id}/report`): informe agrupado por
-  aspecto con la nota y el feedback de todo el curso, listo para exportar
-  a PDF con el botón "Exportar / Imprimir" del navegador (Ctrl/Cmd+P). El
-  botón "Compartir informe" copia un link público (sin contraseña) con el
-  mismo contenido, para que el curso entero lo revise sin entrar al panel
-  del profesor; en "Resumen de notas finales", cada estudiante que tenga
-  videos subidos en esa tarea muestra además un botón "Videos" directo a
-  sus anotaciones.
+- **Informe de curso** (`/assignments/{id}/report`): pantalla completa
+  (pensada para verse en computador, no para imprimir) con las notas
+  finales de todo el curso en tarjetas grandes. Al tocar el nombre de un
+  estudiante, la pantalla se desliza con una transición fluida hacia su
+  detalle (nota y feedback de cada aspecto de la rúbrica), y desde ahí el
+  botón "Ver videos y anotaciones" abre su reproductor —con la línea de
+  tiempo, el dibujo del profesor y la lista de anotaciones de siempre—
+  sin salir de la página. El botón "Compartir informe" copia un link
+  público (sin contraseña) con exactamente el mismo contenido y la misma
+  navegación, para que el curso entero lo revise sin entrar al panel del
+  profesor.
 - **Videos** (pestaña dentro de Corregir): sube uno o varios videos `.mp4`
   por estudiante y tarea (por ejemplo, distintos intentos) — el selector de
   archivos permite elegir varios a la vez, así no hay que repetir el
@@ -121,9 +124,9 @@ contenedor.
 
 ## Qué falta (fases siguientes)
 
-- Exportación a PDF "de verdad" (por ahora es imprimir la página del
-  informe desde el navegador, que ya se ve bien pero no es un PDF generado
-  por el backend).
+- Exportación a PDF: el informe ya no tiene botón de imprimir (está
+  pensado para revisarse en pantalla, no en papel). Si más adelante hace
+  falta un PDF, habría que agregar un generador de verdad en el backend.
 
 ## Cuando quieras moverla a un servidor (más adelante)
 

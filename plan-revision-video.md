@@ -316,7 +316,47 @@ seleccionar otra anotación oculta las manijas de la primera; arrastrar una
 manija más allá del final del video queda acotado a la duración real; y un
 rango casi nulo se vuelve a guardar como anotación puntual.
 
+### Fase 9 — Informe de curso rediseñado (pantalla completa, sin exportar)
+
+- **El informe cambió de un documento largo (pensado para imprimir) a una
+  pantalla completa tipo app**, para revisarse en el computador sin tener
+  que hacer scroll interminable. Ahora son 3 "vistas" que se deslizan una
+  sobre otra sin recargar la página, con una transición fluida:
+  1. **Notas finales**: una tarjeta grande por estudiante (nombre, nota y
+     barra de progreso), ordenadas de mayor a menor nota.
+  2. **Detalle del estudiante** (toca su tarjeta): la nota y el feedback de
+     cada aspecto de la rúbrica, en tarjetas grandes y con texto más
+     legible que antes.
+  3. **Videos y anotaciones** (botón "Ver videos y anotaciones" dentro del
+     detalle): el mismo reproductor de siempre (línea de tiempo con
+     marcadores, dibujo del profesor redibujado encima, lista de
+     anotaciones) pero **sin salir de la página** — antes este botón abría
+     el link público en otra pestaña.
+- **Ya no existe el botón "Exportar / Imprimir"** (no se estaba usando) ni
+  el texto fijo "Escuela de Animación": el encabezado ahora muestra el
+  nombre real del curso.
+- El botón "Compartir informe" se mantiene igual — copia el mismo link
+  público de siempre — y ese link público ve exactamente lo mismo que el
+  profesor (mismas 3 vistas, mismo video in-place), solo que sin el botón
+  de compartir ni el link "Volver a Corregir".
+- Como con las anotaciones con duración (fase 8), antes de tocar el código
+  real se armó un preview interactivo aparte para acordar el diseño y las
+  transiciones, y se ajustó dos veces según feedback (que el video no
+  saliera de la página, textos de feedback más largos, quitar el ícono de
+  video que ya sobraba en la grilla de notas) antes de aprobarlo.
+
+Probado con Playwright: la grilla de notas muestra el nombre del curso (no
+"Escuela de Animación") y ningún botón de exportar/imprimir; tocar un
+estudiante muestra su detalle sin cambiar de URL; "Ver videos y
+anotaciones" abre el reproductor real en el mismo lugar, con la
+navegación anterior/siguiente entre intentos cargando las anotaciones
+correctas de cada video y el clic en una anotación saltando al segundo
+exacto; volver de video → detalle → notas nunca sale de la página; un
+estudiante sin videos no muestra ese botón; y el link público
+("Compartir informe") reproduce el mismo comportamiento sin los controles
+del profesor.
+
 ## Qué falta
 
-Nada pendiente de esta función por ahora — las ocho fases están completas
+Nada pendiente de esta función por ahora — las nueve fases están completas
 y probadas.

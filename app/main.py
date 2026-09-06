@@ -691,6 +691,13 @@ async def grading_save(assignment_id: int, request: Request):
 
 
 def _report_ctx(session: Session, assignment: Assignment, base_url: str):
+    """Arma los datos del informe para UN estudiante a la vez (no ya por
+    aspecto): cada estudiante trae su nota final, sus aspectos (con nota y
+    feedback) y sus videos con anotaciones — todo lo que necesita la vista
+    de detalle y la vista de video del informe (fase 9), que se abren sin
+    salir de la página. `aspects_meta` (nombre + ponderación) va aparte
+    porque es igual para todos los estudiantes.
+    """
     aspects = session.exec(
         select(RubricAspect).where(RubricAspect.assignment_id == assignment.id).order_by(RubricAspect.order)
     ).all()
@@ -700,8 +707,22 @@ def _report_ctx(session: Session, assignment: Assignment, base_url: str):
         .order_by(Student.name)
     ).all()
     grades_all = session.exec(select(Grade).where(Grade.assignment_id == assignment.id)).all()
-    videos_all = session.exec(select(Video).where(Video.assignment_id == assignment.id)).all()
-    students_with_video = {v.student_id for v in videos_all}
+    videos_all = session.exec(
+        select(Video).where(Video.assignment_id == assignment.id).order_by(Video.uploaded_at)
+    ).all()
+
+    videos_by_student: dict[int, list[Video]] = {}
+    for v in videos_all:
+        videos_by_student.setdefault(v.student_id, []).append(v)
+
+    annotations_by_video: dict[int, list[Annotation]] = {}
+    video_ids = [v.id for v in videos_all]
+    if video_ids:
+        annotations_all = session.exec(
+            select(Annotation).where(Annotation.video_id.in_(video_ids)).order_by(Annotation.time_seconds)
+        ).all()
+        for a in annotations_all:
+            annotations_by_video.setdefault(a.video_id, []).append(a)
 
     grades_by_student: dict[int, dict[int, Grade]] = {}
     for g in grades_all:
@@ -719,38 +740,71 @@ def _report_ctx(session: Session, assignment: Assignment, base_url: str):
         students, key=lambda s: (finals[s.id] is None, -(finals[s.id] or 0), s.name)
     )
 
-    summary = []
+    aspects_meta = [{"name": a.name, "weight_display": weight_display(a.weight)} for a in aspects]
+
+    students_ctx = []
     for s in ordered_students:
         grade = finals[s.id]
         pct = 0.0
         if grade is not None:
             pct = max(0.0, min(100.0, (grade - SCALE_MIN) / (SCALE_MAX - SCALE_MIN) * 100))
-        video_url = None
-        if s.id in students_with_video:
-            video_url = base_url + f"/watch/{get_or_create_share_token(session, assignment.id, s.id)}"
-        summary.append(
-            {"name": s.name, "grade_display": fmt(grade), "pct": round(pct, 1), "band": band(grade), "video_url": video_url}
-        )
 
-    aspects_ctx = []
-    for a in aspects:
-        rows = []
-        for s in ordered_students:
+        student_aspects = []
+        for a in aspects:
             g = grades_by_student.get(s.id, {}).get(a.id)
             score = g.score if g else None
-            rows.append(
+            student_aspects.append(
                 {
-                    "name": s.name,
                     "score_display": fmt(score) if score is not None else "—",
                     "band": band(score),
                     "feedback": g.feedback if g else "",
                 }
             )
-        aspects_ctx.append(
-            {"name": a.name, "weight_display": weight_display(a.weight), "rows": rows}
+
+        videos_ctx = []
+        student_videos = videos_by_student.get(s.id, [])
+        if student_videos:
+            # Mismo token que usaba el botón "Videos" de antes -- ya sirve
+            # tanto para el profesor logueado como para el link público del
+            # informe, así que el reproductor embebido en el informe usa la
+            # misma ruta de streaming pública (/watch/{token}/stream) en
+            # ambos casos, sin necesitar dos mecanismos distintos.
+            token = get_or_create_share_token(session, assignment.id, s.id)
+            stream_base = base_url + f"/watch/{token}/stream"
+            for v in student_videos:
+                anns = annotations_by_video.get(v.id, [])
+                videos_ctx.append(
+                    {
+                        "id": v.id,
+                        "label": v.label,
+                        "stream_url": stream_base + f"?v={v.id}",
+                        "annotations": [
+                            {
+                                "id": a.id,
+                                "time_seconds": a.time_seconds,
+                                "end_time_seconds": a.end_time_seconds,
+                                "color": a.color if a.color in ALLOWED_ANNOTATION_COLORS else "#5b7cfa",
+                                "drawing_data": a.drawing_data,
+                                "note": a.note,
+                            }
+                            for a in anns
+                        ],
+                    }
+                )
+
+        students_ctx.append(
+            {
+                "id": s.id,
+                "name": s.name,
+                "grade_display": fmt(grade),
+                "pct": round(pct, 1),
+                "band": band(grade),
+                "aspects": student_aspects,
+                "videos": videos_ctx,
+            }
         )
 
-    return summary, aspects_ctx
+    return students_ctx, aspects_meta
 
 
 @app.get("/assignments/{assignment_id}/report")
@@ -768,8 +822,15 @@ def report(assignment_id: int, request: Request):
         course, _courses = current_course(session, request)
 
         base_url = str(request.base_url).rstrip("/")
-        summary, aspects_ctx = _report_ctx(session, assignment, base_url)
+        students_ctx, aspects_meta = _report_ctx(session, assignment, base_url)
         report_share_url = base_url + f"/report/{get_or_create_report_share_token(session, assignment.id)}"
+
+        # students_ctx completo (aspectos + videos + anotaciones) va como
+        # JSON embebido para que el detalle y el video de cada estudiante se
+        # puedan mostrar sin salir de la página (fase 9) — mismo patrón que
+        # annotations_json en video_review(). El reemplazo de "</" evita que
+        # una nota o feedback con ese texto cierre el <script> antes de tiempo.
+        report_data_json = json.dumps({"students": students_ctx, "aspects": aspects_meta}).replace("</", "<\\/")
 
         # _report_ctx / get_or_create_report_share_token pueden hacer
         # session.commit() (la primera vez que se crea un token), lo que
@@ -782,12 +843,11 @@ def report(assignment_id: int, request: Request):
             {
                 "request": request,
                 "assignment": assignment,
-                "course": course,
-                "summary": summary,
-                "aspects": aspects_ctx,
+                "course_name": course.name,
+                "students": students_ctx,
+                "report_data_json": report_data_json,
                 "scale_min_display": str(int(SCALE_MIN)),
                 "scale_max_display": str(int(SCALE_MAX)),
-                "today": datetime.now().strftime("%d-%m-%Y"),
                 "report_share_url": report_share_url,
             },
         )
@@ -805,20 +865,22 @@ def public_report(share_token: str, request: Request):
         if not assignment:
             return templates.TemplateResponse("public_not_found.html", {"request": request}, status_code=404)
 
+        course = session.get(Course, assignment.course_id)
+
         base_url = str(request.base_url).rstrip("/")
-        summary, aspects_ctx = _report_ctx(session, assignment, base_url)
+        students_ctx, aspects_meta = _report_ctx(session, assignment, base_url)
+        report_data_json = json.dumps({"students": students_ctx, "aspects": aspects_meta}).replace("</", "<\\/")
 
         return templates.TemplateResponse(
             "report.html",
             {
                 "request": request,
                 "assignment": assignment,
-                "course": None,
-                "summary": summary,
-                "aspects": aspects_ctx,
+                "course_name": course.name if course else "",
+                "students": students_ctx,
+                "report_data_json": report_data_json,
                 "scale_min_display": str(int(SCALE_MIN)),
                 "scale_max_display": str(int(SCALE_MAX)),
-                "today": datetime.now().strftime("%d-%m-%Y"),
                 "report_share_url": None,
             },
         )
