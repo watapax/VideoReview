@@ -429,18 +429,28 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 .player-btn { width: 30px; height: 30px; }
 .player-time { font-size: 11.5px; color: var(--muted-2); font-variant-numeric: tabular-nums; flex-shrink: 0; min-width: 76px; }
 
-/* Línea de tiempo con marcadores de anotaciones (fase 3), integrada en la
-   barra de controles como la única forma de buscar en el video — el
-   relleno y la cabeza de reproducción se mueven con 'timeupdate', y cada
-   anotación se dibuja como un rombo (cuadrado rotado 45°) en su posición
-   proporcional, con el color de esa anotación. El arrastre es con Pointer
-   Events (pointerdown/move/up), no un solo 'click', para que currentTime se
-   actualice en cada frame mientras se arrastra, de forma fluida. */
-.annotation-timeline {
-  position: relative; height: 20px; flex: 1; min-width: 0;
-  cursor: pointer; touch-action: none;
+/* Línea de tiempo con marcadores de anotaciones (fase 3, con duración desde
+   la fase 8) — DOS pistas paralelas, no una sola (fase 10): antes, el
+   círculo de reproducción y los marcadores/barras de anotación compartían
+   la misma pista, y una anotación con mucha duración (barra ancha) podía
+   quedar POR ENCIMA del círculo en el orden de apilamiento y quitarle el
+   click — no solo se veía tapado, directamente no se podía arrastrar ahí.
+   La pista de arriba (.annotation-timeline-scrub) es SOLO para buscar en el
+   video — nunca contiene marcadores, así que siempre está 100% libre para
+   arrastrar sin importar cuántas anotaciones (ni cuán largas) haya. La de
+   abajo (.annotation-timeline-lane) es donde viven los marcadores/barras y
+   sus manijas; su fondo (fuera de un marcador) también se puede arrastrar
+   para buscar, así el conjunto se siente como una sola línea de tiempo más
+   alta, no dos controles independientes. Ambas comparten el mismo eje de
+   tiempo (mismo ancho, mismo pctFromTime), y la guía vertical
+   (.annotation-timeline-guide) en la pista de abajo marca dónde está el
+   reproductor ahora mismo respecto a las anotaciones. */
+.annotation-timeline-wrap { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 0; }
+
+.annotation-timeline-scrub {
+  position: relative; height: 16px; cursor: pointer; touch-action: none;
 }
-.annotation-timeline::before {
+.annotation-timeline-scrub::before {
   content: ""; position: absolute; top: 50%; left: 0; right: 0; height: 4px;
   transform: translateY(-50%); background: var(--card); border-radius: 3px;
 }
@@ -452,9 +462,25 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 .annotation-timeline-playhead {
   position: absolute; top: 50%; left: 0; width: 12px; height: 12px;
   transform: translate(-50%, -50%); border-radius: 50%; cursor: grab;
-  background: var(--text); box-shadow: 0 0 0 2px var(--panel); pointer-events: auto;
+  background: var(--text); box-shadow: 0 0 0 2px var(--panel); pointer-events: none;
 }
-.annotation-timeline-playhead:active { cursor: grabbing; }
+.annotation-timeline-scrub:active .annotation-timeline-playhead { cursor: grabbing; }
+
+.annotation-timeline-lane {
+  position: relative; height: 18px; cursor: pointer; touch-action: none;
+}
+.annotation-timeline-lane::before {
+  content: ""; position: absolute; top: 50%; left: 0; right: 0; height: 2px;
+  transform: translateY(-50%); background: var(--border); border-radius: 2px;
+}
+/* Línea vertical fina que marca, sobre la pista de anotaciones, dónde está
+   el reproductor ahora mismo — puramente informativa (pointer-events:none),
+   la que de verdad se arrastra es .annotation-timeline-scrub de arriba. */
+.annotation-timeline-guide {
+  position: absolute; top: -3px; bottom: -3px; width: 1px;
+  background: var(--muted-2); opacity: .6; pointer-events: none;
+}
+
 .annotation-timeline-marker {
   position: absolute; top: 50%; width: 9px; height: 9px;
   transform: translate(-50%, -50%) rotate(45deg); border-radius: 2px;
@@ -464,6 +490,14 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 .annotation-timeline-marker.active {
   transform: translate(-50%, -50%) rotate(45deg) scale(1.35);
   box-shadow: 0 0 0 2px var(--text);
+}
+/* "Reproduciéndose ahora" (fase 10): el playhead está dentro del rango de
+   esta anotación mientras el video avanza, sin que se haya hecho clic en
+   ella — un aviso más suave que .active (que además muestra manijas), para
+   no confundir "se está viendo" con "está seleccionada para editar". */
+.annotation-timeline-marker.playing:not(.active) {
+  transform: translate(-50%, -50%) rotate(45deg) scale(1.2);
+  box-shadow: 0 0 0 2px var(--accent);
 }
 
 /* Marcador CON duración (fase 8): en vez de un rombo puntual, una barra
@@ -476,13 +510,22 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 }
 .annotation-timeline-range:hover { opacity: 1; }
 .annotation-timeline-range.active { opacity: 1; box-shadow: 0 0 0 2px var(--text); }
+.annotation-timeline-range.playing:not(.active) { opacity: 1; box-shadow: 0 0 0 2px var(--accent); }
+
+/* Anotación en borrador (fase 10): la que se está creando/editando y aún no
+   se ha guardado. Se ve igual que una seleccionada (con manijas), pero el
+   guardado de esas manijas es solo local hasta apretar "Guardar" — ver
+   startDraftHandleDrag() en video_review.html. */
+.annotation-timeline-marker.draft,
+.annotation-timeline-range.draft { box-shadow: 0 0 0 2px #fff, 0 0 0 3px var(--panel); }
 
 /* Manijas de inicio/fin: solo existen en el DOM para la anotación
-   seleccionada (shownAnnotationId) — al seleccionar otra, se destruyen y se
-   vuelven a crear en su nueva posición desde renderMarkers(), así nunca hay
-   dos pares de manijas a la vez ni aunque dos rangos se crucen en el
-   tiempo. Arrastrarlas solo actualiza la posición (repositionMarker), nunca
-   reconstruye el DOM — ver el comentario en video_review.html. */
+   seleccionada (shownAnnotationId) o para el borrador en creación/edición —
+   al seleccionar otra, se destruyen y se vuelven a crear en su nueva
+   posición desde renderLane() / renderDraftMarker(), así nunca hay dos
+   pares de manijas a la vez ni aunque dos rangos se crucen en el tiempo.
+   Arrastrarlas solo actualiza la posición (repositionMarker/repositionDraft),
+   nunca reconstruye el DOM — ver el comentario en video_review.html. */
 .annotation-timeline-handle {
   position: absolute; top: 50%; width: 9px; height: 20px;
   transform: translate(-50%, -50%); border-radius: 3px; cursor: ew-resize; z-index: 3;
@@ -523,6 +566,10 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 }
 .annotation-row:hover { background: rgba(255,255,255,0.03); }
 .annotation-row.active { background: var(--accent-soft); border-left-color: var(--accent); }
+/* Se está viendo ahora mismo porque el playhead pasó por su rango durante
+   la reproducción (fase 10) — no seleccionada a mano, por eso un aviso más
+   sutil que .active (mismo tono que .annotation-timeline-marker.playing). */
+.annotation-row.playing:not(.active) { background: rgba(91,124,250,0.08); border-left-color: var(--accent); }
 .annotation-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
 .annotation-row-body { min-width: 0; flex: 1; }
 .annotation-time { font-size: 11.5px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; margin-bottom: 3px; }

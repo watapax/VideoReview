@@ -59,9 +59,14 @@
           </button>
           <span class="player-time" id="player-time">0:00 / 0:00</span>
 
-          <div class="annotation-timeline" id="annotation-timeline">
-            <div class="annotation-timeline-fill" id="timeline-fill"></div>
-            <div class="annotation-timeline-playhead" id="timeline-playhead"></div>
+          <div class="annotation-timeline-wrap" id="annotation-timeline">
+            <div class="annotation-timeline-scrub" id="timeline-scrub">
+              <div class="annotation-timeline-fill" id="timeline-fill"></div>
+              <div class="annotation-timeline-playhead" id="timeline-playhead"></div>
+            </div>
+            <div class="annotation-timeline-lane" id="timeline-lane">
+              <div class="annotation-timeline-guide" id="timeline-guide"></div>
+            </div>
           </div>
 
           <button type="button" class="icon-btn player-btn" id="mute-btn" title="Silenciar / activar sonido">
@@ -86,6 +91,7 @@
     <div class="annotations-panel">
       <form id="annotation-form" method="post" action="/videos/{{ video.id }}/annotations">
         <input type="hidden" name="time_seconds" id="field-time-seconds">
+        <input type="hidden" name="end_time_seconds" id="field-end-time-seconds">
         <input type="hidden" name="color" id="field-color" value="{{ colors[0] }}">
         <input type="hidden" name="stroke_width" id="field-stroke-width" value="6">
         <input type="hidden" name="drawing_data" id="field-drawing-data">
@@ -147,11 +153,14 @@
   const eraserBtn = document.getElementById('eraser-btn');
   const form = document.getElementById('annotation-form');
   const fieldTime = document.getElementById('field-time-seconds');
+  const fieldEndTime = document.getElementById('field-end-time-seconds');
   const fieldColor = document.getElementById('field-color');
   const fieldWidth = document.getElementById('field-stroke-width');
   const fieldDrawing = document.getElementById('field-drawing-data');
   const noteInput = form.querySelector('textarea[name="note"]');
-  const timeline = document.getElementById('annotation-timeline');
+  const timelineScrub = document.getElementById('timeline-scrub');
+  const timelineLane = document.getElementById('timeline-lane');
+  const timelineGuide = document.getElementById('timeline-guide');
   const timelineFill = document.getElementById('timeline-fill');
   const timelinePlayhead = document.getElementById('timeline-playhead');
   const reviewPlayer = document.getElementById('review-player');
@@ -193,11 +202,16 @@
   let selectedColor = fieldColor.value;
   let selectedWidth = parseFloat(fieldWidth.value);
   let shownAnnotationId = null;
-  // true justo mientras showAnnotation() mueve el video por código, para que
-  // el listener de 'seeked' no confunda ese salto programático con que el
-  // usuario arrastró la línea de tiempo a mano (lo que sí debe limpiar la
-  // anotación mostrada).
-  let suppressSeekClear = false;
+  // Anotación en borrador: la que se está creando o editando y todavía no se
+  // ha guardado (fase 10). Guarda solo su tiempo/rango -- el dibujo en sí
+  // sigue viviendo en `strokes` como siempre. Mientras exista, se le
+  // muestran manijas propias en la línea de tiempo para poder fijarle una
+  // duración ANTES de guardar (antes solo se podía después, seleccionando la
+  // anotación ya guardada). `draftEls` son los nodos del DOM que la
+  // representan, para poder reposicionarlos sin reconstruirlos en cada
+  // arrastre (mismo motivo que markerEls/repositionMarker).
+  let draft = null;
+  let draftEls = { mainEl: null, handleStart: null, handleEnd: null };
 
   function fmtTime(s) {
     s = Math.max(0, s || 0);
@@ -223,14 +237,26 @@
     redraw();
   }
 
-  // Dibuja un arreglo de trazos {points, color, width} sobre el canvas.
-  // Sirve tanto para el trazo en vivo (creando una anotación nueva) como
-  // para redibujar el trazo ya guardado de una anotación existente.
+  // Dibuja un arreglo de trazos {points, color, width, ref_w} sobre el
+  // canvas. Sirve tanto para el trazo en vivo (creando una anotación nueva)
+  // como para redibujar el trazo ya guardado de una anotación existente.
+  // `ref_w` es el ancho del canvas (en px) que tenía la ventana cuando se
+  // dibujó ese trazo — al redibujarlo se reescala `width` proporcionalmente
+  // al ancho ACTUAL del canvas, para que el grosor se vea igual de grueso
+  // relativo al video sin importar cuánto se haya achicado/agrandado la
+  // ventana desde que se dibujó (antes el grosor quedaba fijo en píxeles
+  // absolutos, así que en una ventana chica un trazo fino podía verse
+  // desproporcionadamente grueso, o uno grueso volverse casi invisible).
+  // Los trazos guardados ANTES de este cambio no traen `ref_w`: se dibujan
+  // sin reescalar (factor 1), igual que siempre — no hay forma de saber a
+  // qué tamaño se dibujaron, así que no se les aplica una corrección
+  // inventada.
   function drawStrokesArray(strokeList) {
     strokeList.forEach(stroke => {
       if (!stroke.points || stroke.points.length < 1) return;
+      const scale = stroke.ref_w ? (canvas.width / stroke.ref_w) : 1;
       ctx.strokeStyle = stroke.color || '#5b7cfa';
-      ctx.lineWidth = stroke.width || 4;
+      ctx.lineWidth = (stroke.width || 4) * scale;
       ctx.lineJoin = 'round';
       ctx.lineCap = 'round';
       ctx.beginPath();
@@ -242,27 +268,79 @@
     });
   }
 
+  // ---- Marcadores de la línea de tiempo (fase 8: con duración) --------
+  // Una anotación es "puntual" (rombo) mientras end_time_seconds sea null;
+  // pasa a ser "con rango" (barra) apenas tiene un end_time_seconds mayor
+  // que su time_seconds. Solo la anotación seleccionada (shownAnnotationId)
+  // muestra sus dos manijas de arrastre — al seleccionar otra, las
+  // anteriores desaparecen, así nunca hay dos pares a la vez ni aunque dos
+  // rangos se crucen en el tiempo.
+  function isRanged(ann) {
+    return ann.end_time_seconds != null && ann.end_time_seconds > ann.time_seconds;
+  }
+
+  // Fase 10: mientras el video se reproduce, además de la anotación
+  // EXPLÍCITAMENTE seleccionada (shownAnnotationId, con manijas), cualquier
+  // anotación con rango cuyo tramo [time_seconds, end_time_seconds] incluya
+  // el momento actual se considera "activa" y se dibuja sola, sin necesitar
+  // un clic — así se alcanzan a ver en vivo las que duran más de un cuadro.
+  // Las puntuales solo se activan un instante corto alrededor de su segundo
+  // exacto (para notarlas al pasar por encima reproduciendo), no todo el
+  // video.
+  const POINT_MARGIN_SECONDS = 0.12;
+  function activeAnnotationIds() {
+    const ids = new Set();
+    const t = video.currentTime;
+    ANNOTATIONS.forEach(ann => {
+      if (isRanged(ann)) {
+        if (t >= ann.time_seconds && t <= ann.end_time_seconds) ids.add(ann.id);
+      } else if (Math.abs(t - ann.time_seconds) <= POINT_MARGIN_SECONDS) {
+        ids.add(ann.id);
+      }
+    });
+    if (shownAnnotationId != null) ids.add(shownAnnotationId);
+    return ids;
+  }
+
   function redraw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     if (creating) {
       const all = currentStroke ? strokes.concat([currentStroke]) : strokes;
       drawStrokesArray(all);
-    } else if (shownAnnotationId != null) {
-      const ann = ANNOTATIONS.find(a => a.id === shownAnnotationId);
-      if (ann) {
-        try {
-          const data = JSON.parse(ann.drawing_data || '{}');
-          drawStrokesArray(data.strokes || []);
-        } catch (e) {
-          // dibujo vacío o inválido: no hay nada que mostrar
-        }
-      }
+      return;
     }
+    activeAnnotationIds().forEach(id => {
+      const ann = ANNOTATIONS.find(a => a.id === id);
+      if (!ann) return;
+      try {
+        const data = JSON.parse(ann.drawing_data || '{}');
+        drawStrokesArray(data.strokes || []);
+      } catch (e) {
+        // dibujo vacío o inválido: no hay nada que mostrar
+      }
+    });
   }
 
   function highlightRow(id) {
     document.querySelectorAll('.annotation-row').forEach(row => {
       row.classList.toggle('active', id != null && String(row.dataset.id) === String(id));
+    });
+  }
+
+  // Realza (sin seleccionar) las filas/marcadores cuyo momento está siendo
+  // reproducido ahora mismo (ver activeAnnotationIds) — un aviso más sutil
+  // que highlightRow/.active, que es solo para la seleccionada a mano.
+  function updateLiveHighlights() {
+    if (creating) return;
+    const ids = activeAnnotationIds();
+    document.querySelectorAll('.annotation-row').forEach(row => {
+      const id = parseInt(row.dataset.id, 10);
+      row.classList.toggle('playing', ids.has(id) && id !== shownAnnotationId);
+    });
+    Object.keys(markerEls).forEach(idStr => {
+      const id = parseInt(idStr, 10);
+      const rec = markerEls[id];
+      if (rec && rec.mainEl) rec.mainEl.classList.toggle('playing', ids.has(id) && id !== shownAnnotationId);
     });
   }
 
@@ -286,12 +364,10 @@
     if (creating) exitCreating();
     shownAnnotationId = id;
     highlightRow(id);
-    renderMarkers();
-    // Si el video ya está exactamente en ese segundo, cambiar currentTime no
-    // dispara 'seeked' — no hay que esperar (ni suprimir) ese evento.
-    suppressSeekClear = Math.abs(video.currentTime - ann.time_seconds) > 0.01;
+    renderLane();
     video.currentTime = ann.time_seconds;
     redraw();
+    updateLiveHighlights();
     const row = document.querySelector('.annotation-row[data-id="' + id + '"]');
     if (row) row.scrollIntoView({ block: 'nearest' });
   }
@@ -300,19 +376,8 @@
     if (shownAnnotationId == null) return;
     shownAnnotationId = null;
     highlightRow(null);
-    renderMarkers();
+    renderLane();
     redraw();
-  }
-
-  // ---- Marcadores de la línea de tiempo (fase 8: con duración) --------
-  // Una anotación es "puntual" (rombo) mientras end_time_seconds sea null;
-  // pasa a ser "con rango" (barra) apenas tiene un end_time_seconds mayor
-  // que su time_seconds. Solo la anotación seleccionada (shownAnnotationId)
-  // muestra sus dos manijas de arrastre — al seleccionar otra, las
-  // anteriores desaparecen, así nunca hay dos pares a la vez ni aunque dos
-  // rangos se crucen en el tiempo.
-  function isRanged(ann) {
-    return ann.end_time_seconds != null && ann.end_time_seconds > ann.time_seconds;
   }
 
   function pctFromTime(t) {
@@ -325,23 +390,30 @@
   // repositionMarker) durante un arrastre de manija.
   let markerEls = {};
 
-  // Reconstrucción completa de los marcadores: se llama SOLO cuando cambia
-  // qué elementos hay que mostrar (se selecciona/deselecciona una
-  // anotación, se cargan/actualizan datos) — NUNCA durante un arrastre de
-  // manija. Si se llamara ahí, destruiría y volvería a crear la manija que
-  // el usuario tiene agarrada: el navegador suelta la captura del puntero
-  // apenas ese elemento sale del DOM, y el arrastre se corta después del
-  // primer pixel de movimiento (bug ya visto y corregido en el preview de
-  // esta función — ver repositionMarker más abajo, que es la que sí es
-  // segura de llamar en cada pointermove).
-  function renderMarkers() {
+  // Reconstrucción completa de los marcadores de la pista de anotaciones: se
+  // llama SOLO cuando cambia qué elementos hay que mostrar (se
+  // selecciona/deselecciona una anotación, se entra/sale de crear o editar)
+  // — NUNCA durante un arrastre de manija. Si se llamara ahí, destruiría y
+  // volvería a crear la manija que el usuario tiene agarrada: el navegador
+  // suelta la captura del puntero apenas ese elemento sale del DOM, y el
+  // arrastre se corta después del primer pixel de movimiento (bug ya visto y
+  // corregido en el preview de esta función — ver repositionMarker más
+  // abajo, que es la que sí es segura de llamar en cada pointermove).
+  //
+  // Mientras se está creando o editando (fase 10), la anotación en cuestión
+  // se representa por el BORRADOR (ver renderDraftMarker), no por su marcador
+  // normal — por eso se excluye acá (`ann.id === editingId`) para no mostrar
+  // dos marcadores encimados para la misma anotación.
+  function renderLane() {
     if (!video.duration || !isFinite(video.duration)) return;
-    timeline.querySelectorAll(
+    timelineLane.querySelectorAll(
       '.annotation-timeline-marker, .annotation-timeline-range, .annotation-timeline-handle, .annotation-timeline-handle-tooltip'
     ).forEach(el => el.remove());
     markerEls = {};
+    draftEls = { mainEl: null, handleStart: null, handleEnd: null };
 
     ANNOTATIONS.forEach(ann => {
+      if (creating && ann.id === editingId) return;
       const selected = ann.id === shownAnnotationId;
       const mainEl = document.createElement('div');
       mainEl.dataset.id = ann.id;
@@ -349,7 +421,7 @@
         e.stopPropagation();
         showAnnotation(ann.id);
       });
-      timeline.appendChild(mainEl);
+      timelineLane.appendChild(mainEl);
 
       const rec = { mainEl, handleStart: null, handleEnd: null };
       markerEls[ann.id] = rec;
@@ -357,11 +429,14 @@
       if (selected) {
         rec.handleStart = createHandle(ann, 'start');
         rec.handleEnd = createHandle(ann, 'end');
-        timeline.appendChild(rec.handleStart);
-        timeline.appendChild(rec.handleEnd);
+        timelineLane.appendChild(rec.handleStart);
+        timelineLane.appendChild(rec.handleEnd);
       }
       repositionMarker(ann);
     });
+
+    if (creating) renderDraftMarker();
+    updateLiveHighlights();
   }
 
   // Actualiza solo posición/ancho/clase de los elementos que YA existen de
@@ -408,7 +483,7 @@
 
   function timeFromPointer(e) {
     if (!video.duration || !isFinite(video.duration)) return 0;
-    return pctFromPointer(e) * video.duration;
+    return pctFromPointerRect(e, timelineLane) * video.duration;
   }
 
   function persistAnnotationRange(ann) {
@@ -432,10 +507,16 @@
       })
       .catch(() => {
         alert('No se pudo guardar el cambio de duración — intenta de nuevo.');
-        renderMarkers();
+        renderLane();
       });
   }
 
+  // Manija de una anotación YA GUARDADA (seleccionada con un clic, sin estar
+  // en modo crear/editar): al soltar, el nuevo rango se persiste de
+  // inmediato con POST .../range (ver persistAnnotationRange). Para el
+  // rango del BORRADOR en creación/edición, ver startDraftHandleDrag más
+  // abajo, que en vez de un fetch solo actualiza los campos ocultos del
+  // formulario -- se guarda junto con el resto recién al apretar "Guardar".
   function startHandleDrag(e, ann, side, handleEl) {
     handleEl.setPointerCapture(e.pointerId);
     handleEl.classList.add('dragging');
@@ -443,7 +524,7 @@
 
     const tooltip = document.createElement('div');
     tooltip.className = 'annotation-timeline-handle-tooltip';
-    timeline.appendChild(tooltip);
+    timelineLane.appendChild(tooltip);
 
     function updateTooltip() {
       const endVal = ann.end_time_seconds != null ? ann.end_time_seconds : ann.time_seconds;
@@ -463,8 +544,8 @@
       } else {
         ann.end_time_seconds = Math.min(duration, Math.max(t, ann.time_seconds + MIN_ANNOTATION_RANGE_SECONDS));
       }
-      // Solo reposiciona -- NUNCA renderMarkers() acá, ver el comentario en
-      // esa función sobre por qué eso rompía el arrastre.
+      // Solo reposiciona -- NUNCA renderLane() acá, ver el comentario en esa
+      // función sobre por qué eso rompía el arrastre.
       repositionMarker(ann);
       updateTooltip();
     }
@@ -481,30 +562,147 @@
     handleEl.addEventListener('pointercancel', onUp);
   }
 
+  // ---- Borrador (fase 10): duración ajustable ANTES de guardar --------
+  // Mientras se crea o edita una anotación, este marcador (con sus propias
+  // manijas, siempre visibles) representa su tiempo/rango todavía sin
+  // guardar. Arrastrar sus manijas solo actualiza los campos ocultos del
+  // formulario (fieldTime/fieldEndTime) — el rango recién se guarda de
+  // verdad cuando se envía el formulario completo (junto con el dibujo y la
+  // nota), no con un fetch aparte como el de una anotación ya guardada.
+  function renderDraftMarker() {
+    if (!draft) return;
+    const mainEl = document.createElement('div');
+    timelineLane.appendChild(mainEl);
+    draftEls.mainEl = mainEl;
+    draftEls.handleStart = createDraftHandle('start');
+    draftEls.handleEnd = createDraftHandle('end');
+    timelineLane.appendChild(draftEls.handleStart);
+    timelineLane.appendChild(draftEls.handleEnd);
+    repositionDraft();
+  }
+
+  function repositionDraft() {
+    if (!draft || !draftEls.mainEl) return;
+    const ranged = draft.end_time_seconds != null && draft.end_time_seconds > draft.time_seconds;
+    draftEls.mainEl.className = (ranged ? 'annotation-timeline-range' : 'annotation-timeline-marker') + ' active draft';
+    draftEls.mainEl.style.background = selectedColor;
+    draftEls.mainEl.style.left = pctFromTime(draft.time_seconds) + '%';
+    draftEls.mainEl.style.width = ranged
+      ? Math.max(0.6, pctFromTime(draft.end_time_seconds) - pctFromTime(draft.time_seconds)) + '%'
+      : '';
+
+    const endVal = draft.end_time_seconds != null ? draft.end_time_seconds : draft.time_seconds;
+    const nudge = ranged ? 0 : 4;
+    draftEls.handleStart.style.left = 'calc(' + pctFromTime(draft.time_seconds) + '% - ' + nudge + 'px)';
+    draftEls.handleEnd.style.left = 'calc(' + pctFromTime(endVal) + '% + ' + nudge + 'px)';
+    draftEls.handleStart.style.background = selectedColor;
+    draftEls.handleEnd.style.background = selectedColor;
+
+    fieldTime.value = draft.time_seconds;
+    fieldEndTime.value = draft.end_time_seconds != null ? draft.end_time_seconds : '';
+    updateDraftTimeLabel();
+  }
+
+  function updateDraftTimeLabel() {
+    if (!draft) return;
+    const label = draft.end_time_seconds != null
+      ? (fmtTime(draft.time_seconds) + ' – ' + fmtTime(draft.end_time_seconds))
+      : fmtTime(draft.time_seconds);
+    newTimeLabel.textContent = label;
+    drawTimeReadout.textContent = (editingId != null ? 'Editando en ' : 'Anotando en ') + label;
+  }
+
+  function createDraftHandle(side) {
+    const handle = document.createElement('div');
+    handle.className = 'annotation-timeline-handle';
+    handle.title = side === 'start' ? 'Manija de inicio' : 'Manija de fin';
+    handle.addEventListener('pointerdown', e => {
+      e.stopPropagation();
+      startDraftHandleDrag(e, side, handle);
+    });
+    return handle;
+  }
+
+  function startDraftHandleDrag(e, side, handleEl) {
+    handleEl.setPointerCapture(e.pointerId);
+    handleEl.classList.add('dragging');
+
+    const tooltip = document.createElement('div');
+    tooltip.className = 'annotation-timeline-handle-tooltip';
+    timelineLane.appendChild(tooltip);
+
+    function updateTooltip() {
+      const endVal = draft.end_time_seconds != null ? draft.end_time_seconds : draft.time_seconds;
+      tooltip.style.left = pctFromTime(side === 'start' ? draft.time_seconds : endVal) + '%';
+      tooltip.textContent = draft.end_time_seconds != null
+        ? (fmtTime(draft.time_seconds) + ' – ' + fmtTime(endVal))
+        : fmtTime(draft.time_seconds);
+    }
+    updateTooltip();
+
+    function onMove(ev) {
+      const duration = video.duration && isFinite(video.duration) ? video.duration : (draft.end_time_seconds || draft.time_seconds);
+      const t = Math.max(0, Math.min(duration, timeFromPointer(ev)));
+      if (side === 'start') {
+        const endVal = draft.end_time_seconds != null ? draft.end_time_seconds : draft.time_seconds;
+        draft.time_seconds = Math.max(0, Math.min(t, endVal - MIN_ANNOTATION_RANGE_SECONDS));
+        draft.end_time_seconds = endVal;
+      } else {
+        draft.end_time_seconds = Math.min(duration, Math.max(t, draft.time_seconds + MIN_ANNOTATION_RANGE_SECONDS));
+      }
+      repositionDraft();
+      updateTooltip();
+    }
+    function onUp() {
+      handleEl.classList.remove('dragging');
+      handleEl.removeEventListener('pointermove', onMove);
+      handleEl.removeEventListener('pointerup', onUp);
+      handleEl.removeEventListener('pointercancel', onUp);
+      tooltip.remove();
+      // Colapsa un rango casi nulo de vuelta a puntual -- mismo criterio que
+      // aplica el servidor (_normalize_range en main.py), para no dejar en
+      // la UI una barra invisible que después el servidor de todos modos
+      // iba a guardar como puntual.
+      if (draft.end_time_seconds != null && (draft.end_time_seconds - draft.time_seconds) < MIN_ANNOTATION_RANGE_SECONDS) {
+        draft.end_time_seconds = null;
+      }
+      repositionDraft();
+    }
+    handleEl.addEventListener('pointermove', onMove);
+    handleEl.addEventListener('pointerup', onUp);
+    handleEl.addEventListener('pointercancel', onUp);
+  }
+
   function updatePlayhead() {
     if (!video.duration || !isFinite(video.duration)) return;
     const pct = Math.min(100, Math.max(0, (video.currentTime / video.duration) * 100));
     timelineFill.style.width = pct + '%';
     timelinePlayhead.style.left = pct + '%';
+    timelineGuide.style.left = pct + '%';
     playerTime.textContent = fmtClock(video.currentTime) + ' / ' + fmtClock(video.duration);
   }
 
-  // Única línea de tiempo (no la barra nativa del navegador — el <video> no
-  // tiene el atributo `controls`, este reproductor es 100% propio) con
-  // arrastre por Pointer Events. El video se sirve con Range requests contra
-  // R2 (vía redirect) — cada "salto" real requiere ida y vuelta de red para
-  // traer y decodificar el nuevo fragmento, así que llamar video.currentTime
-  // en CADA pointermove (puede disparar decenas por segundo) satura eso: el
-  // navegador cancela cada seek con el siguiente antes de que termine
-  // ninguno, y el video se ve "pegado" en el mismo cuadro. La solución es
-  // separar dos cosas: la posición VISUAL (línea/círculo/contador), que se
-  // actualiza en cada pointermove sin costo de red, del seek REAL del video,
-  // que se limita a como mucho uno cada SEEK_THROTTLE_MS — así cada seek
-  // real tiene tiempo de completarse y el video sí avanza cuadro a cuadro
-  // mientras se arrastra, en vez de quedar estático. Al soltar, se hace un
-  // último seek exacto (sin límite) para aterrizar justo donde se soltó.
+  // Dos pistas paralelas (fase 10, ver comentario largo en styles.css): la
+  // de arriba (timelineScrub) es SOLO para buscar en el video, siempre
+  // libre de marcadores; la de abajo (timelineLane) tiene los
+  // marcadores/barras/manijas de las anotaciones, pero su fondo (fuera de
+  // un marcador) TAMBIÉN busca en el video, para que el conjunto se sienta
+  // como una sola línea de tiempo más alta. El video se sirve con Range
+  // requests contra R2 (vía redirect) — cada "salto" real requiere ida y
+  // vuelta de red para traer y decodificar el nuevo fragmento, así que
+  // llamar video.currentTime en CADA pointermove (puede disparar decenas
+  // por segundo) satura eso: el navegador cancela cada seek con el
+  // siguiente antes de que termine ninguno, y el video se ve "pegado" en el
+  // mismo cuadro. La solución es separar dos cosas: la posición VISUAL
+  // (línea/círculo/contador), que se actualiza en cada pointermove sin
+  // costo de red, del seek REAL del video, que se limita a como mucho uno
+  // cada SEEK_THROTTLE_MS — así cada seek real tiene tiempo de completarse
+  // y el video sí avanza cuadro a cuadro mientras se arrastra, en vez de
+  // quedar estático. Al soltar, se hace un último seek exacto (sin límite)
+  // para aterrizar justo donde se soltó.
   const SEEK_THROTTLE_MS = 150;
   let scrubbing = false;
+  let scrubRefEl = null;
   let wasPlayingBeforeScrub = false;
   let lastSeekAt = 0;
 
@@ -512,13 +710,14 @@
     const pctDisplay = Math.min(100, Math.max(0, pct * 100));
     timelineFill.style.width = pctDisplay + '%';
     timelinePlayhead.style.left = pctDisplay + '%';
+    timelineGuide.style.left = pctDisplay + '%';
     if (video.duration && isFinite(video.duration)) {
       playerTime.textContent = fmtClock(pct * video.duration) + ' / ' + fmtClock(video.duration);
     }
   }
 
-  function pctFromPointer(e) {
-    const rect = timeline.getBoundingClientRect();
+  function pctFromPointerRect(e, el) {
+    const rect = el.getBoundingClientRect();
     return Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
   }
 
@@ -531,35 +730,58 @@
     video.currentTime = pct * video.duration;
   }
 
-  timeline.addEventListener('pointerdown', e => {
+  function beginScrub(e, refEl) {
+    scrubbing = true;
+    scrubRefEl = refEl;
+    wasPlayingBeforeScrub = !video.paused;
+    if (wasPlayingBeforeScrub) video.pause();
+    // El usuario está tomando control manual de la posición: si había una
+    // anotación mostrada por haberle hecho clic, se deja de mostrar acá
+    // mismo (en vez de esperarlo del evento 'seeked', que no es confiable
+    // cuando el destino del seek coincide con el tiempo actual del video —
+    // p.ej. una anotación en el segundo 0 justo cuando el video recién
+    // cargó y todavía está en el segundo 0: ahí currentTime no cambia,
+    // así que el navegador no siempre dispara 'seeked', y la anotación
+    // podía quedar "pegada" mostrada o, si sí disparaba, se limpiaba sola
+    // de inmediato — bug ya visto y resuelto sacando esta limpieza del
+    // evento 'seeked' por completo).
+    clearAnnotationView();
+    refEl.setPointerCapture(e.pointerId);
+    scrubTo(pctFromPointerRect(e, refEl), true);
+  }
+  function continueScrub(e) {
+    if (!scrubbing) return;
+    scrubTo(pctFromPointerRect(e, scrubRefEl), false);
+  }
+  function endScrub(e) {
+    if (!scrubbing) return;
+    scrubbing = false;
+    if (e) scrubTo(pctFromPointerRect(e, scrubRefEl), true);
+    scrubRefEl = null;
+    if (wasPlayingBeforeScrub) { wasPlayingBeforeScrub = false; video.play(); }
+  }
+
+  timelineScrub.addEventListener('pointerdown', e => beginScrub(e, timelineScrub));
+  timelineScrub.addEventListener('pointermove', continueScrub);
+  timelineScrub.addEventListener('pointerup', endScrub);
+  timelineScrub.addEventListener('pointercancel', endScrub);
+
+  timelineLane.addEventListener('pointerdown', e => {
     if (
       e.target.classList.contains('annotation-timeline-marker') ||
       e.target.classList.contains('annotation-timeline-range') ||
       e.target.classList.contains('annotation-timeline-handle')
     ) return;
-    scrubbing = true;
-    wasPlayingBeforeScrub = !video.paused;
-    if (wasPlayingBeforeScrub) video.pause();
-    timeline.setPointerCapture(e.pointerId);
-    scrubTo(pctFromPointer(e), true);
+    beginScrub(e, timelineLane);
   });
-  timeline.addEventListener('pointermove', e => {
-    if (!scrubbing) return;
-    scrubTo(pctFromPointer(e), false);
-  });
-  function endScrub(e) {
-    if (!scrubbing) return;
-    scrubbing = false;
-    if (e) scrubTo(pctFromPointer(e), true);
-    if (wasPlayingBeforeScrub) { wasPlayingBeforeScrub = false; video.play(); }
-  }
-  timeline.addEventListener('pointerup', endScrub);
-  timeline.addEventListener('pointercancel', endScrub);
+  timelineLane.addEventListener('pointermove', continueScrub);
+  timelineLane.addEventListener('pointerup', endScrub);
+  timelineLane.addEventListener('pointercancel', endScrub);
 
-  video.addEventListener('timeupdate', updatePlayhead);
-  video.addEventListener('seeked', () => {
-    if (suppressSeekClear) { suppressSeekClear = false; return; }
-    clearAnnotationView();
+  video.addEventListener('timeupdate', () => {
+    updatePlayhead();
+    redraw();
+    updateLiveHighlights();
   });
   video.addEventListener('play', () => { clearAnnotationView(); syncPlayPauseIcon(); });
   video.addEventListener('pause', syncPlayPauseIcon);
@@ -655,7 +877,7 @@
       const pts = stroke.points || [];
       let run = [];
       const flush = () => {
-        if (run.length >= 2) result.push({ points: run, color: stroke.color, width: stroke.width });
+        if (run.length >= 2) result.push({ points: run, color: stroke.color, width: stroke.width, ref_w: stroke.ref_w });
         run = [];
       };
       pts.forEach(p => {
@@ -742,7 +964,7 @@
       eraseAt(e);
       return;
     }
-    currentStroke = { points: [pointFromEvent(e)], color: selectedColor, width: selectedWidth };
+    currentStroke = { points: [pointFromEvent(e)], color: selectedColor, width: selectedWidth, ref_w: canvas.width };
   });
   canvas.addEventListener('pointermove', e => {
     if (creating) positionBrushCursor(e);
@@ -819,9 +1041,8 @@
     currentStroke = null;
     noteInput.value = '';
     const t = video.currentTime || 0;
-    fieldTime.value = t;
-    newTimeLabel.textContent = fmtTime(t);
-    drawTimeReadout.textContent = 'Anotando en ' + fmtTime(t);
+    draft = { time_seconds: t, end_time_seconds: null };
+    fieldEndTime.value = '';
     toolbar.hidden = false;
     newBox.hidden = false;
     newBtn.hidden = true;
@@ -829,6 +1050,7 @@
     canvas.style.pointerEvents = 'auto';
     setErasing(false);
     syncBrushCursorFromLastPointer();
+    renderLane();
     redraw();
   }
 
@@ -848,17 +1070,14 @@
     try {
       savedStrokes = (JSON.parse(ann.drawing_data || '{}').strokes || []);
     } catch (e) { /* dibujo vacío o inválido */ }
-    strokes = savedStrokes.map(s => ({ points: s.points, color: s.color, width: s.width }));
+    strokes = savedStrokes.map(s => ({ points: s.points, color: s.color, width: s.width, ref_w: s.ref_w }));
     currentStroke = null;
 
     shownAnnotationId = null;
     highlightRow(ann.id);
-    renderMarkers();
 
     selectColorAndWidth(ann.color, ann.stroke_width || selectedWidth);
-    fieldTime.value = ann.time_seconds;
-    newTimeLabel.textContent = fmtTime(ann.time_seconds);
-    drawTimeReadout.textContent = 'Editando en ' + fmtTime(ann.time_seconds);
+    draft = { time_seconds: ann.time_seconds, end_time_seconds: ann.end_time_seconds };
     noteInput.value = ann.note || '';
 
     toolbar.hidden = false;
@@ -868,8 +1087,8 @@
     canvas.style.pointerEvents = 'auto';
     setErasing(false);
     syncBrushCursorFromLastPointer();
+    renderLane();
 
-    suppressSeekClear = Math.abs(video.currentTime - ann.time_seconds) > 0.01;
     video.currentTime = ann.time_seconds;
     redraw();
     const row = document.querySelector('.annotation-row[data-id="' + ann.id + '"]');
@@ -879,6 +1098,8 @@
   function exitCreating() {
     creating = false;
     editingId = null;
+    draft = null;
+    fieldEndTime.value = '';
     form.setAttribute('action', CREATE_URL);
     newAnnotationLabelText.textContent = 'Nueva anotación';
     saveAnnotationBtn.textContent = 'Guardar anotación';
@@ -893,6 +1114,7 @@
     brushCursor.hidden = true;
     noteInput.value = '';
     highlightRow(null);
+    renderLane();
     redraw();
   }
 
@@ -907,13 +1129,13 @@
       return;
     }
     fieldDrawing.value = JSON.stringify({
-      strokes: strokes.map(s => ({ points: s.points, color: s.color, width: s.width })),
+      strokes: strokes.map(s => ({ points: s.points, color: s.color, width: s.width, ref_w: s.ref_w })),
     });
   });
 
   function onVideoReady() {
     resizeCanvas();
-    renderMarkers();
+    renderLane();
     updatePlayhead();
     syncPlayPauseIcon();
     syncMuteIcon();

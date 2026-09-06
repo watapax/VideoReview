@@ -260,9 +260,14 @@
                   <svg id="pause-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none" hidden><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
                 </button>
                 <span class="player-time" id="player-time">0:00 / 0:00</span>
-                <div class="annotation-timeline" id="annotation-timeline">
-                  <div class="annotation-timeline-fill" id="timeline-fill"></div>
-                  <div class="annotation-timeline-playhead" id="timeline-playhead"></div>
+                <div class="annotation-timeline-wrap" id="annotation-timeline">
+                  <div class="annotation-timeline-scrub" id="timeline-scrub">
+                    <div class="annotation-timeline-fill" id="timeline-fill"></div>
+                    <div class="annotation-timeline-playhead" id="timeline-playhead"></div>
+                  </div>
+                  <div class="annotation-timeline-lane" id="timeline-lane">
+                    <div class="annotation-timeline-guide" id="timeline-guide"></div>
+                  </div>
                 </div>
                 <button type="button" class="icon-btn player-btn" id="mute-btn" title="Silenciar / activar sonido">
                   <svg id="volume-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
@@ -398,7 +403,9 @@
   var video = document.getElementById('review-video');
   var canvas = document.getElementById('draw-canvas');
   var ctx = canvas.getContext('2d');
-  var timeline = document.getElementById('annotation-timeline');
+  var timelineScrub = document.getElementById('timeline-scrub');
+  var timelineLane = document.getElementById('timeline-lane');
+  var timelineGuide = document.getElementById('timeline-guide');
   var timelineFill = document.getElementById('timeline-fill');
   var timelinePlayhead = document.getElementById('timeline-playhead');
   var reviewPlayer = document.getElementById('review-player');
@@ -422,7 +429,6 @@
   var ANNOTATIONS = [];
   var currentVideoIndex = 0;
   var shownAnnotationId = null;
-  var suppressSeekClear = false;
 
   function fmtTime(s) {
     s = Math.max(0, s || 0);
@@ -447,8 +453,9 @@
   function drawStrokesArray(strokeList) {
     strokeList.forEach(function (stroke) {
       if (!stroke.points || stroke.points.length < 1) return;
+      var scale = stroke.ref_w ? (canvas.width / stroke.ref_w) : 1;
       ctx.strokeStyle = stroke.color || '#5b7cfa';
-      ctx.lineWidth = stroke.width || 4;
+      ctx.lineWidth = (stroke.width || 4) * scale;
       ctx.lineJoin = 'round';
       ctx.lineCap = 'round';
       ctx.beginPath();
@@ -460,15 +467,37 @@
     });
   }
 
+  function isRanged(ann) {
+    return ann.end_time_seconds != null && ann.end_time_seconds > ann.time_seconds;
+  }
+
+  var POINT_MARGIN_SECONDS = 0.12;
+  function activeAnnotationIds() {
+    var ids = {};
+    var t = video.currentTime;
+    ANNOTATIONS.forEach(function (ann) {
+      if (isRanged(ann)) {
+        if (t >= ann.time_seconds && t <= ann.end_time_seconds) ids[ann.id] = true;
+      } else if (Math.abs(t - ann.time_seconds) <= POINT_MARGIN_SECONDS) {
+        ids[ann.id] = true;
+      }
+    });
+    if (shownAnnotationId != null) ids[shownAnnotationId] = true;
+    return ids;
+  }
+
   function redraw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    if (shownAnnotationId == null) return;
-    var ann = ANNOTATIONS.find(function (a) { return a.id === shownAnnotationId; });
-    if (!ann) return;
-    try {
-      var data = JSON.parse(ann.drawing_data || '{}');
-      drawStrokesArray(data.strokes || []);
-    } catch (e) { /* dibujo vacío o inválido */ }
+    var ids = activeAnnotationIds();
+    Object.keys(ids).forEach(function (idStr) {
+      var id = parseInt(idStr, 10);
+      var ann = ANNOTATIONS.find(function (a) { return a.id === id; });
+      if (!ann) return;
+      try {
+        var data = JSON.parse(ann.drawing_data || '{}');
+        drawStrokesArray(data.strokes || []);
+      } catch (e) { /* dibujo vacío o inválido */ }
+    });
   }
 
   function highlightRow(id) {
@@ -480,14 +509,26 @@
     });
   }
 
+  function updateLiveHighlights() {
+    var ids = activeAnnotationIds();
+    document.querySelectorAll('.annotation-row').forEach(function (row) {
+      var id = parseInt(row.dataset.id, 10);
+      row.classList.toggle('playing', !!ids[id] && id !== shownAnnotationId);
+    });
+    document.querySelectorAll('.annotation-timeline-marker, .annotation-timeline-range').forEach(function (m) {
+      var id = parseInt(m.dataset.id, 10);
+      m.classList.toggle('playing', !!ids[id] && id !== shownAnnotationId);
+    });
+  }
+
   function showAnnotation(id) {
     var ann = ANNOTATIONS.find(function (a) { return a.id === id; });
     if (!ann) return;
     shownAnnotationId = id;
     highlightRow(id);
-    suppressSeekClear = Math.abs(video.currentTime - ann.time_seconds) > 0.01;
     video.currentTime = ann.time_seconds;
     redraw();
+    updateLiveHighlights();
     var row = document.querySelector('.annotation-row[data-id="' + id + '"]');
     if (row) row.scrollIntoView({ block: 'nearest' });
   }
@@ -499,12 +540,8 @@
     redraw();
   }
 
-  function isRanged(ann) {
-    return ann.end_time_seconds != null && ann.end_time_seconds > ann.time_seconds;
-  }
-
   function buildTimelineMarkers() {
-    timeline.querySelectorAll('.annotation-timeline-marker, .annotation-timeline-range').forEach(function (m) { m.remove(); });
+    timelineLane.querySelectorAll('.annotation-timeline-marker, .annotation-timeline-range').forEach(function (m) { m.remove(); });
     if (!video.duration || !isFinite(video.duration)) return;
     ANNOTATIONS.forEach(function (ann) {
       var pct = Math.min(100, Math.max(0, (ann.time_seconds / video.duration) * 100));
@@ -520,8 +557,9 @@
         marker.style.width = Math.max(0.6, endPct - pct) + '%';
       }
       marker.addEventListener('click', function (e) { e.stopPropagation(); showAnnotation(ann.id); });
-      timeline.appendChild(marker);
+      timelineLane.appendChild(marker);
     });
+    updateLiveHighlights();
   }
 
   function renderAnnotationsList() {
@@ -552,11 +590,13 @@
     var pct = Math.min(100, Math.max(0, (video.currentTime / video.duration) * 100));
     timelineFill.style.width = pct + '%';
     timelinePlayhead.style.left = pct + '%';
+    timelineGuide.style.left = pct + '%';
     playerTime.textContent = fmtClock(video.currentTime) + ' / ' + fmtClock(video.duration);
   }
 
   var SEEK_THROTTLE_MS = 150;
   var scrubbing = false;
+  var scrubRefEl = null;
   var wasPlayingBeforeScrub = false;
   var lastSeekAt = 0;
 
@@ -564,13 +604,14 @@
     var pctDisplay = Math.min(100, Math.max(0, pct * 100));
     timelineFill.style.width = pctDisplay + '%';
     timelinePlayhead.style.left = pctDisplay + '%';
+    timelineGuide.style.left = pctDisplay + '%';
     if (video.duration && isFinite(video.duration)) {
       playerTime.textContent = fmtClock(pct * video.duration) + ' / ' + fmtClock(video.duration);
     }
   }
 
-  function pctFromPointer(e) {
-    var rect = timeline.getBoundingClientRect();
+  function pctFromPointerRect(e, el) {
+    var rect = el.getBoundingClientRect();
     return Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
   }
 
@@ -583,31 +624,44 @@
     video.currentTime = pct * video.duration;
   }
 
-  timeline.addEventListener('pointerdown', function (e) {
-    if (e.target.classList.contains('annotation-timeline-marker') || e.target.classList.contains('annotation-timeline-range')) return;
+  function beginScrub(e, refEl) {
     scrubbing = true;
+    scrubRefEl = refEl;
     wasPlayingBeforeScrub = !video.paused;
     if (wasPlayingBeforeScrub) video.pause();
-    timeline.setPointerCapture(e.pointerId);
-    scrubTo(pctFromPointer(e), true);
-  });
-  timeline.addEventListener('pointermove', function (e) {
+    clearAnnotationView();
+    refEl.setPointerCapture(e.pointerId);
+    scrubTo(pctFromPointerRect(e, refEl), true);
+  }
+  function continueScrub(e) {
     if (!scrubbing) return;
-    scrubTo(pctFromPointer(e), false);
-  });
+    scrubTo(pctFromPointerRect(e, scrubRefEl), false);
+  }
   function endScrub(e) {
     if (!scrubbing) return;
     scrubbing = false;
-    if (e) scrubTo(pctFromPointer(e), true);
+    if (e) scrubTo(pctFromPointerRect(e, scrubRefEl), true);
+    scrubRefEl = null;
     if (wasPlayingBeforeScrub) { wasPlayingBeforeScrub = false; video.play(); }
   }
-  timeline.addEventListener('pointerup', endScrub);
-  timeline.addEventListener('pointercancel', endScrub);
 
-  video.addEventListener('timeupdate', updatePlayhead);
-  video.addEventListener('seeked', function () {
-    if (suppressSeekClear) { suppressSeekClear = false; return; }
-    clearAnnotationView();
+  timelineScrub.addEventListener('pointerdown', function (e) { beginScrub(e, timelineScrub); });
+  timelineScrub.addEventListener('pointermove', continueScrub);
+  timelineScrub.addEventListener('pointerup', endScrub);
+  timelineScrub.addEventListener('pointercancel', endScrub);
+
+  timelineLane.addEventListener('pointerdown', function (e) {
+    if (e.target.classList.contains('annotation-timeline-marker') || e.target.classList.contains('annotation-timeline-range')) return;
+    beginScrub(e, timelineLane);
+  });
+  timelineLane.addEventListener('pointermove', continueScrub);
+  timelineLane.addEventListener('pointerup', endScrub);
+  timelineLane.addEventListener('pointercancel', endScrub);
+
+  video.addEventListener('timeupdate', function () {
+    updatePlayhead();
+    redraw();
+    updateLiveHighlights();
   });
   video.addEventListener('play', function () { clearAnnotationView(); syncPlayPauseIcon(); });
   video.addEventListener('pause', syncPlayPauseIcon);

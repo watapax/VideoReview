@@ -356,7 +356,68 @@ estudiante sin videos no muestra ese botón; y el link público
 ("Compartir informe") reproduce el mismo comportamiento sin los controles
 del profesor.
 
+### Fase 10 — Cinco correcciones al reproductor de anotaciones
+
+Reportadas todas juntas después de usar la fase 9 en la práctica:
+
+- **Grosor de trazo proporcional a la ventana.** Antes el grosor se
+  guardaba y dibujaba en píxeles absolutos de canvas: al achicar mucho la
+  ventana, un trazo que se veía bien a tamaño completo se volvía
+  desproporcionadamente grueso (o un trazo fino casi desaparecía). Ahora
+  cada trazo guarda también el ancho de canvas que tenía la ventana al
+  momento de dibujarlo (`ref_w`), y al redibujarlo se reescala el grosor
+  proporcional al ancho ACTUAL del canvas. Los trazos guardados antes de
+  este cambio no tienen `ref_w` y se siguen dibujando sin reescalar, como
+  siempre (no hay forma de saber a qué tamaño se dibujaron).
+- **Anotación en el segundo 0 que no se podía volver a ver.** El
+  reproductor dependía del evento `seeked` del video para saber cuándo
+  dejar de mostrar una anotación seleccionada — pero ese evento no siempre
+  se dispara cuando el destino del salto coincide con el tiempo actual del
+  video (por ejemplo, una anotación en el segundo 0 justo después de
+  cargar, cuando el video ya está en el segundo 0). Se sacó por completo
+  esa dependencia: ahora se limpia la vista de la anotación de forma
+  explícita apenas el usuario toma control manual de la línea de tiempo
+  (empieza a arrastrarla), sin importar si el video efectivamente cambia de
+  posición.
+- **La duración de una anotación nueva solo se podía ajustar después de
+  guardarla.** Ahora, mientras se está creando o editando una anotación,
+  aparecen de inmediato las mismas manijas de inicio/fin en la línea de
+  tiempo (antes solo aparecían en una anotación ya guardada y
+  seleccionada) — se puede fijar la duración ANTES de guardar, y recién se
+  persiste junto con el resto al apretar "Guardar".
+- **Reproducción en vivo de las anotaciones con duración.** Antes solo se
+  veía el dibujo de una anotación al seleccionarla a mano (clic en la lista
+  o en su marcador). Ahora, al darle play, cualquier anotación con rango
+  cuyo tramo incluya el momento actual se dibuja sola y se resalta (tanto
+  en la lista como en la línea de tiempo, con un aviso más sutil que la
+  selección manual) sin necesitar un clic — así se alcanzan a ver las que
+  duran más de un cuadro mientras el video avanza. Las anotaciones
+  puntuales se resaltan un instante corto alrededor de su segundo exacto.
+- **El círculo de la línea de tiempo quedaba tapado por anotaciones
+  largas.** La línea de tiempo pasó a ser dos pistas paralelas, del mismo
+  alto que antes en conjunto: la de arriba solo tiene el círculo de
+  progreso y siempre está libre para buscar en el video; la de abajo tiene
+  los marcadores/barras/manijas de las anotaciones (y su fondo, fuera de un
+  marcador, también busca en el video, para que el conjunto se sienta como
+  una sola barra). Así una anotación con una barra ancha nunca vuelve a
+  esconder el control de arrastre.
+
+Aplicado por igual en las tres pantallas que comparten este reproductor:
+Anotar video (creación/edición), el link público del estudiante, y la
+vista de video embebida en el informe de curso.
+
+Probado con Playwright en las tres pantallas: el número de píxeles
+pintados de un trazo cae de forma proporcional al achicar la ventana; una
+anotación creada en el segundo 0 se puede volver a seleccionar y
+previsualizar después de mover el video a otro punto; arrastrar la manija
+de fin del borrador ANTES de guardar deja el campo oculto
+`end_time_seconds` con valor, y ese rango efectivamente se guarda; una
+anotación con rango se resalta y dibuja sola durante la reproducción
+(clase `playing`, sin necesitar clic ni quedar seleccionada); y un clic en
+la pista de arriba sigue buscando al punto exacto del video aunque una
+barra de rango ancha ocupe esa misma zona en la pista de abajo.
+
 ## Qué falta
 
-Nada pendiente de esta función por ahora — las nueve fases están completas
+Nada pendiente de esta función por ahora — las diez fases están completas
 y probadas.

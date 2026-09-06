@@ -1182,6 +1182,29 @@ def video_review(video_id: int, request: Request):
         )
 
 
+# Duración mínima que se acepta para considerar una anotación "con rango":
+# por debajo de esto (arrastraste los dos manejadores casi al mismo punto) se
+# guarda como puntual de nuevo, para no dejar barras invisibles de 0.02s. Se
+# usa al crear/editar (fase 10: el rango se puede fijar arrastrando las
+# manijas ANTES de guardar, ver el borrador en video_review.html) y al
+# ajustar una anotación ya guardada (POST /annotations/{id}/range).
+MIN_ANNOTATION_RANGE_SECONDS = 1 / 24  # un cuadro a 24fps
+
+
+def _normalize_range(start: float, end: "float | None") -> "tuple[float, float | None]":
+    """Ordena start/end (por si se soltó la manija de fin antes que la de
+    inicio) y colapsa un rango casi nulo de vuelta a una anotación puntual
+    (end=None). Compartida entre crear, editar y /range para no repetir esta
+    lógica tres veces con el riesgo de que se desincronicen."""
+    start = max(0.0, start)
+    if end is None:
+        return start, None
+    end = max(0.0, end)
+    if end < start:
+        start, end = end, start
+    return start, (end if (end - start) >= MIN_ANNOTATION_RANGE_SECONDS else None)
+
+
 @app.post("/videos/{video_id}/annotations")
 async def annotation_create(video_id: int, request: Request):
     redirect = require_login(request)
@@ -1199,6 +1222,17 @@ async def annotation_create(video_id: int, request: Request):
             time_seconds = max(0.0, float(form.get("time_seconds") or 0))
         except ValueError:
             time_seconds = 0.0
+
+        # end_time_seconds (fase 10): opcional -- se puede fijar arrastrando
+        # las manijas del borrador ANTES de guardar (ver draft en
+        # video_review.html), no solo después via POST .../range. Vacío o
+        # ausente significa "sin rango" (anotación puntual), igual que antes.
+        end_raw = form.get("end_time_seconds")
+        try:
+            end_time_seconds = float(end_raw) if end_raw not in (None, "") else None
+        except ValueError:
+            end_time_seconds = None
+        time_seconds, end_time_seconds = _normalize_range(time_seconds, end_time_seconds)
 
         try:
             stroke_width = min(20.0, max(1.0, float(form.get("stroke_width") or 4)))
@@ -1221,6 +1255,7 @@ async def annotation_create(video_id: int, request: Request):
         ann = Annotation(
             video_id=video_id,
             time_seconds=time_seconds,
+            end_time_seconds=end_time_seconds,
             color=color,
             stroke_width=stroke_width,
             drawing_data=drawing_data,
@@ -1245,8 +1280,10 @@ async def annotation_edit(annotation_id: int, request: Request):
     """Edita una anotación ya guardada: nota, color, grosor y el dibujo
     (se puede seguir dibujando encima de los trazos que ya tenía, o borrar
     todo y empezar de nuevo — el botón de lápiz en la lista precarga todo
-    eso en el mismo formulario/canvas que se usa para crear). El momento
-    (time_seconds) de la anotación no cambia al editarla.
+    eso en el mismo formulario/canvas que se usa para crear). Desde la fase
+    10 el rango (time_seconds/end_time_seconds) también se puede ajustar acá,
+    arrastrando las manijas del borrador antes de guardar — antes solo se
+    podía después de guardar, seleccionándola y usando POST .../range.
     """
     redirect = require_login(request)
     if redirect:
@@ -1259,6 +1296,18 @@ async def annotation_edit(annotation_id: int, request: Request):
         video_id = ann.video_id
 
         form = await request.form()
+
+        try:
+            time_seconds = float(form.get("time_seconds") or ann.time_seconds)
+        except ValueError:
+            time_seconds = ann.time_seconds
+
+        end_raw = form.get("end_time_seconds")
+        try:
+            end_time_seconds = float(end_raw) if end_raw not in (None, "") else None
+        except ValueError:
+            end_time_seconds = ann.end_time_seconds
+        ann.time_seconds, ann.end_time_seconds = _normalize_range(time_seconds, end_time_seconds)
 
         try:
             stroke_width = min(20.0, max(1.0, float(form.get("stroke_width") or ann.stroke_width)))
@@ -1305,12 +1354,6 @@ def annotation_delete(annotation_id: int, request: Request):
     return RedirectResponse(url=f"/videos/{video_id}?msg=Anotación eliminada.", status_code=303)
 
 
-# Duración mínima que se acepta para considerar una anotación "con rango":
-# por debajo de esto (arrastraste los dos manejadores casi al mismo punto) se
-# guarda como puntual de nuevo, para no dejar barras invisibles de 0.02s.
-MIN_ANNOTATION_RANGE_SECONDS = 1 / 24  # un cuadro a 24fps, mismo criterio que el preview
-
-
 @app.post("/annotations/{annotation_id}/range")
 async def annotation_set_range(annotation_id: int, request: Request):
     """Actualiza el rango (inicio/fin) de una anotación ya creada, al soltar
@@ -1319,7 +1362,10 @@ async def annotation_set_range(annotation_id: int, request: Request):
     porque arrastrar un manejador no debería recargar la página ni perder el
     estado de reproducción/selección — así que responde JSON en vez de
     redirigir, y usa is_logged_in() en vez de require_login() (que
-    redirigiría a /login, algo sin sentido para una llamada fetch).
+    redirigiría a /login, algo sin sentido para una llamada fetch). Sigue
+    existiendo tal cual junto al ajuste de rango durante crear/editar (fase
+    10): esta ruta es para el caso de arrastrar una anotación YA guardada
+    (seleccionada con un clic) sin entrar al formulario de edición.
     """
     if not is_logged_in(request):
         return JSONResponse({"error": "no autenticado"}, status_code=401)
@@ -1335,16 +1381,12 @@ async def annotation_set_range(annotation_id: int, request: Request):
             return JSONResponse({"error": "esa anotación no existe"}, status_code=404)
 
         try:
-            start = max(0.0, float(body.get("start")))
-            end = max(0.0, float(body.get("end")))
+            start = float(body.get("start"))
+            end = float(body.get("end"))
         except (TypeError, ValueError):
             return JSONResponse({"error": "start/end inválidos"}, status_code=400)
 
-        if end < start:
-            start, end = end, start
-
-        ann.time_seconds = start
-        ann.end_time_seconds = end if (end - start) >= MIN_ANNOTATION_RANGE_SECONDS else None
+        ann.time_seconds, ann.end_time_seconds = _normalize_range(start, end)
         session.add(ann)
         session.commit()
         session.refresh(ann)

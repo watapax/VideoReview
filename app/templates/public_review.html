@@ -59,9 +59,14 @@
               </button>
               <span class="player-time" id="player-time">0:00 / 0:00</span>
 
-              <div class="annotation-timeline" id="annotation-timeline">
-                <div class="annotation-timeline-fill" id="timeline-fill"></div>
-                <div class="annotation-timeline-playhead" id="timeline-playhead"></div>
+              <div class="annotation-timeline-wrap" id="annotation-timeline">
+                <div class="annotation-timeline-scrub" id="timeline-scrub">
+                  <div class="annotation-timeline-fill" id="timeline-fill"></div>
+                  <div class="annotation-timeline-playhead" id="timeline-playhead"></div>
+                </div>
+                <div class="annotation-timeline-lane" id="timeline-lane">
+                  <div class="annotation-timeline-guide" id="timeline-guide"></div>
+                </div>
               </div>
 
               <button type="button" class="icon-btn player-btn" id="mute-btn" title="Silenciar / activar sonido">
@@ -110,7 +115,9 @@
   const video = document.getElementById('review-video');
   const canvas = document.getElementById('draw-canvas');
   const ctx = canvas.getContext('2d');
-  const timeline = document.getElementById('annotation-timeline');
+  const timelineScrub = document.getElementById('timeline-scrub');
+  const timelineLane = document.getElementById('timeline-lane');
+  const timelineGuide = document.getElementById('timeline-guide');
   const timelineFill = document.getElementById('timeline-fill');
   const timelinePlayhead = document.getElementById('timeline-playhead');
   const reviewPlayer = document.getElementById('review-player');
@@ -126,7 +133,6 @@
   const ANNOTATIONS = JSON.parse(document.getElementById('annotations-data').textContent || '[]');
 
   let shownAnnotationId = null;
-  let suppressSeekClear = false;
 
   function fmtTime(s) {
     s = Math.max(0, s || 0);
@@ -148,11 +154,17 @@
     redraw();
   }
 
+  // Igual que en video_review.html: `ref_w` es el ancho de canvas que tenía
+  // la ventana cuando se dibujó el trazo — se reescala `width` al tamaño
+  // actual para que el grosor se vea proporcional aunque la ventana se haya
+  // achicado/agrandado desde entonces. Los trazos guardados antes de este
+  // cambio no traen `ref_w` y se dibujan sin reescalar (factor 1).
   function drawStrokesArray(strokeList) {
     strokeList.forEach(stroke => {
       if (!stroke.points || stroke.points.length < 1) return;
+      const scale = stroke.ref_w ? (canvas.width / stroke.ref_w) : 1;
       ctx.strokeStyle = stroke.color || '#5b7cfa';
-      ctx.lineWidth = stroke.width || 4;
+      ctx.lineWidth = (stroke.width || 4) * scale;
       ctx.lineJoin = 'round';
       ctx.lineCap = 'round';
       ctx.beginPath();
@@ -164,15 +176,39 @@
     });
   }
 
+  function isRanged(ann) {
+    return ann.end_time_seconds != null && ann.end_time_seconds > ann.time_seconds;
+  }
+
+  // Igual que en video_review.html: mientras el video se reproduce, además
+  // de la anotación explícitamente seleccionada (shownAnnotationId), toda
+  // anotación con rango activo en el momento actual se considera "en vivo"
+  // y se dibuja sola, sin necesitar un clic.
+  const POINT_MARGIN_SECONDS = 0.12;
+  function activeAnnotationIds() {
+    const ids = new Set();
+    const t = video.currentTime;
+    ANNOTATIONS.forEach(ann => {
+      if (isRanged(ann)) {
+        if (t >= ann.time_seconds && t <= ann.end_time_seconds) ids.add(ann.id);
+      } else if (Math.abs(t - ann.time_seconds) <= POINT_MARGIN_SECONDS) {
+        ids.add(ann.id);
+      }
+    });
+    if (shownAnnotationId != null) ids.add(shownAnnotationId);
+    return ids;
+  }
+
   function redraw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    if (shownAnnotationId == null) return;
-    const ann = ANNOTATIONS.find(a => a.id === shownAnnotationId);
-    if (!ann) return;
-    try {
-      const data = JSON.parse(ann.drawing_data || '{}');
-      drawStrokesArray(data.strokes || []);
-    } catch (e) { /* dibujo vacío o inválido */ }
+    activeAnnotationIds().forEach(id => {
+      const ann = ANNOTATIONS.find(a => a.id === id);
+      if (!ann) return;
+      try {
+        const data = JSON.parse(ann.drawing_data || '{}');
+        drawStrokesArray(data.strokes || []);
+      } catch (e) { /* dibujo vacío o inválido */ }
+    });
   }
 
   function highlightRow(id) {
@@ -184,14 +220,26 @@
     });
   }
 
+  function updateLiveHighlights() {
+    const ids = activeAnnotationIds();
+    document.querySelectorAll('.annotation-row').forEach(row => {
+      const id = parseInt(row.dataset.id, 10);
+      row.classList.toggle('playing', ids.has(id) && id !== shownAnnotationId);
+    });
+    document.querySelectorAll('.annotation-timeline-marker, .annotation-timeline-range').forEach(m => {
+      const id = parseInt(m.dataset.id, 10);
+      m.classList.toggle('playing', ids.has(id) && id !== shownAnnotationId);
+    });
+  }
+
   function showAnnotation(id) {
     const ann = ANNOTATIONS.find(a => a.id === id);
     if (!ann) return;
     shownAnnotationId = id;
     highlightRow(id);
-    suppressSeekClear = Math.abs(video.currentTime - ann.time_seconds) > 0.01;
     video.currentTime = ann.time_seconds;
     redraw();
+    updateLiveHighlights();
     const row = document.querySelector('.annotation-row[data-id="' + id + '"]');
     if (row) row.scrollIntoView({ block: 'nearest' });
   }
@@ -206,13 +254,12 @@
   // Igual que en video_review.html, pero de solo lectura: sin manijas ni
   // arrastre, así que no hace falta separar reconstrucción/reposición —
   // basta con volver a dibujar todo cada vez (aquí solo pasa al cargar).
-  function isRanged(ann) {
-    return ann.end_time_seconds != null && ann.end_time_seconds > ann.time_seconds;
-  }
-
+  // Los marcadores/barras van en timelineLane (pista de abajo); la pista de
+  // arriba (timelineScrub) queda siempre libre para buscar en el video, sin
+  // que una barra ancha le tape el círculo del playhead (ver styles.css).
   function buildTimelineMarkers() {
     if (!video.duration || !isFinite(video.duration)) return;
-    timeline.querySelectorAll('.annotation-timeline-marker, .annotation-timeline-range').forEach(m => m.remove());
+    timelineLane.querySelectorAll('.annotation-timeline-marker, .annotation-timeline-range').forEach(m => m.remove());
     ANNOTATIONS.forEach(ann => {
       const pct = Math.min(100, Math.max(0, (ann.time_seconds / video.duration) * 100));
       const ranged = isRanged(ann);
@@ -230,8 +277,9 @@
         e.stopPropagation();
         showAnnotation(ann.id);
       });
-      timeline.appendChild(marker);
+      timelineLane.appendChild(marker);
     });
+    updateLiveHighlights();
   }
 
   function updatePlayhead() {
@@ -239,6 +287,7 @@
     const pct = Math.min(100, Math.max(0, (video.currentTime / video.duration) * 100));
     timelineFill.style.width = pct + '%';
     timelinePlayhead.style.left = pct + '%';
+    timelineGuide.style.left = pct + '%';
     playerTime.textContent = fmtClock(video.currentTime) + ' / ' + fmtClock(video.duration);
   }
 
@@ -249,6 +298,7 @@
   // cuadro en vez de avanzar mientras se arrastra.
   const SEEK_THROTTLE_MS = 150;
   let scrubbing = false;
+  let scrubRefEl = null;
   let wasPlayingBeforeScrub = false;
   let lastSeekAt = 0;
 
@@ -256,13 +306,14 @@
     const pctDisplay = Math.min(100, Math.max(0, pct * 100));
     timelineFill.style.width = pctDisplay + '%';
     timelinePlayhead.style.left = pctDisplay + '%';
+    timelineGuide.style.left = pctDisplay + '%';
     if (video.duration && isFinite(video.duration)) {
       playerTime.textContent = fmtClock(pct * video.duration) + ' / ' + fmtClock(video.duration);
     }
   }
 
-  function pctFromPointer(e) {
-    const rect = timeline.getBoundingClientRect();
+  function pctFromPointerRect(e, el) {
+    const rect = el.getBoundingClientRect();
     return Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
   }
 
@@ -275,34 +326,51 @@
     video.currentTime = pct * video.duration;
   }
 
-  timeline.addEventListener('pointerdown', e => {
+  function beginScrub(e, refEl) {
+    scrubbing = true;
+    scrubRefEl = refEl;
+    wasPlayingBeforeScrub = !video.paused;
+    if (wasPlayingBeforeScrub) video.pause();
+    // Se limpia acá mismo (no esperando 'seeked', que no dispara de forma
+    // confiable cuando el destino coincide con el tiempo actual — ver el
+    // comentario largo en video_review.html sobre el bug de la anotación
+    // en el segundo 0).
+    clearAnnotationView();
+    refEl.setPointerCapture(e.pointerId);
+    scrubTo(pctFromPointerRect(e, refEl), true);
+  }
+  function continueScrub(e) {
+    if (!scrubbing) return;
+    scrubTo(pctFromPointerRect(e, scrubRefEl), false);
+  }
+  function endScrub(e) {
+    if (!scrubbing) return;
+    scrubbing = false;
+    if (e) scrubTo(pctFromPointerRect(e, scrubRefEl), true);
+    scrubRefEl = null;
+    if (wasPlayingBeforeScrub) { wasPlayingBeforeScrub = false; video.play(); }
+  }
+
+  timelineScrub.addEventListener('pointerdown', e => beginScrub(e, timelineScrub));
+  timelineScrub.addEventListener('pointermove', continueScrub);
+  timelineScrub.addEventListener('pointerup', endScrub);
+  timelineScrub.addEventListener('pointercancel', endScrub);
+
+  timelineLane.addEventListener('pointerdown', e => {
     if (
       e.target.classList.contains('annotation-timeline-marker') ||
       e.target.classList.contains('annotation-timeline-range')
     ) return;
-    scrubbing = true;
-    wasPlayingBeforeScrub = !video.paused;
-    if (wasPlayingBeforeScrub) video.pause();
-    timeline.setPointerCapture(e.pointerId);
-    scrubTo(pctFromPointer(e), true);
+    beginScrub(e, timelineLane);
   });
-  timeline.addEventListener('pointermove', e => {
-    if (!scrubbing) return;
-    scrubTo(pctFromPointer(e), false);
-  });
-  function endScrub(e) {
-    if (!scrubbing) return;
-    scrubbing = false;
-    if (e) scrubTo(pctFromPointer(e), true);
-    if (wasPlayingBeforeScrub) { wasPlayingBeforeScrub = false; video.play(); }
-  }
-  timeline.addEventListener('pointerup', endScrub);
-  timeline.addEventListener('pointercancel', endScrub);
+  timelineLane.addEventListener('pointermove', continueScrub);
+  timelineLane.addEventListener('pointerup', endScrub);
+  timelineLane.addEventListener('pointercancel', endScrub);
 
-  video.addEventListener('timeupdate', updatePlayhead);
-  video.addEventListener('seeked', () => {
-    if (suppressSeekClear) { suppressSeekClear = false; return; }
-    clearAnnotationView();
+  video.addEventListener('timeupdate', () => {
+    updatePlayhead();
+    redraw();
+    updateLiveHighlights();
   });
   video.addEventListener('play', () => { clearAnnotationView(); syncPlayPauseIcon(); });
   video.addEventListener('pause', syncPlayPauseIcon);

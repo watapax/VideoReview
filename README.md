@@ -99,20 +99,26 @@ contenedor.
   se guarda como datos vectoriales, no como imagen, así que "borrar" corta
   el trazo justo ahí y deja el resto intacto. La lista de anotaciones de la
   derecha las muestra todas, y el lápiz de cada una permite editar su
-  dibujo/nota después de creada (el papelero, eliminarla). El reproductor
-  es propio (no el del navegador) con una sola
-  línea de tiempo — sin barras dobles — que se puede arrastrar de forma
-  fluida y que muestra un marcador en forma de rombo por cada anotación
-  (del color de esa anotación). Al hacer clic en un marcador o en una
-  anotación de la lista, el video salta directo a ese momento, vuelve a
-  mostrar el dibujo guardado encima, y la anotación queda resaltada tanto
-  en la lista como en la línea de tiempo. Una anotación también puede
-  durar más de un instante: al seleccionarla aparecen dos manijas (inicio
-  y fin) en la línea de tiempo para estirarla — se convierte en una barra
-  de color en vez de un rombo, y el cambio se guarda solo al soltar. Las
-  manijas solo se ven en la anotación seleccionada; al elegir otra
-  desaparecen, así nunca hay dos pares a la vez aunque los rangos se
-  crucen en el tiempo.
+  dibujo/nota después de creada (el papelero, eliminarla). El grosor del
+  trazo se ve proporcional al tamaño de la ventana (si se achica mucho, el
+  trazo se ve igual de grueso en relación al video, no fijo en píxeles). El
+  reproductor es propio (no el del navegador) con dos pistas paralelas: una
+  de arriba, siempre libre, para arrastrar y buscar en el video; y una de
+  abajo con un marcador en forma de rombo por cada anotación (del color de
+  esa anotación) — así una anotación larga nunca tapa el control para
+  buscar. Al hacer clic en un marcador o en una anotación de la lista, el
+  video salta directo a ese momento, vuelve a mostrar el dibujo guardado
+  encima, y la anotación queda resaltada tanto en la lista como en la línea
+  de tiempo. Una anotación también puede durar más de un instante: al
+  crearla (o editarla, o seleccionar una ya guardada) aparecen dos manijas
+  (inicio y fin) para estirarla — se convierte en una barra de color en vez
+  de un rombo, y su duración se puede ajustar tanto ANTES de guardarla como
+  después. Las manijas solo se ven en la anotación seleccionada o en la que
+  se está creando/editando; al elegir otra desaparecen, así nunca hay dos
+  pares a la vez aunque los rangos se crucen en el tiempo. Al darle play,
+  cualquier anotación con duración se ve en vivo (dibujo y resaltado) apenas
+  el video pasa por su tramo, sin necesidad de hacer clic — así se alcanzan
+  a notar las que duran más de un cuadro.
 - **Compartir con el estudiante** (botón "Compartir" en la pantalla de
   anotar, o "Compartir con [estudiante]" en la pestaña Videos): copia un
   link público al portapapeles. Es un solo link por tarea + estudiante —
