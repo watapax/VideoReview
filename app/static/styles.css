@@ -255,6 +255,16 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
   background: var(--input-bg); color: var(--text);
 }
 
+/* ---------- /students: lápiz para corregir el nombre de un estudiante ----------
+   Mismo patrón que .course-rename-form/.video-rename-form -- el nombre es un
+   <span> que se oculta y este form (oculto por defecto) ocupa su lugar. */
+.student-rename-form { display: inline-flex; align-items: center; gap: 6px; }
+.student-rename-input {
+  min-width: 160px; max-width: 280px; font-size: 12.5px; padding: 5px 8px;
+  border-radius: 8px; border: 1px solid var(--border-strong);
+  background: var(--input-bg); color: var(--text);
+}
+
 .course-item-tasks { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .task-chip {
   display: inline-flex; align-items: center; gap: 5px;

@@ -838,6 +838,31 @@ async def students_bulk_add(request: Request):
     return RedirectResponse(url="/students", status_code=303)
 
 
+@app.post("/students/{student_id}/rename")
+async def students_rename(student_id: int, request: Request):
+    """Corrige el nombre de un estudiante ya creado (ej: un error de tipeo) --
+    ver el ícono de lápiz junto a su nombre en /students. Mismo patrón que
+    courses_rename: el dueño del curso es el único que puede hacerlo."""
+    redirect = require_login(request)
+    if redirect:
+        return redirect
+    form = await request.form()
+    name = (form.get("name") or "").strip()
+    with Session(engine) as session:
+        s = session.get(Student, student_id)
+        if s is None:
+            return RedirectResponse(url="/students?msg=Ese estudiante ya no existe.", status_code=303)
+        course = session.get(Course, s.course_id)
+        denied = require_course_owner(session, request, course, "/students")
+        if denied:
+            return denied
+        if name:
+            s.name = name
+            session.add(s)
+            session.commit()
+    return RedirectResponse(url="/students", status_code=303)
+
+
 @app.post("/students/{student_id}/toggle")
 def students_toggle(student_id: int, request: Request):
     redirect = require_login(request)

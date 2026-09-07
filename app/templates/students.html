@@ -34,12 +34,24 @@
       <tbody>
         {% for s in students %}
         <tr>
-          <td>{{ s.name }}</td>
+          <td>
+            <span id="student-name-{{ s.id }}">{{ s.name }}</span>
+            {% if can_edit %}
+            <form method="post" action="/students/{{ s.id }}/rename" class="student-rename-form" id="student-rename-form-{{ s.id }}" hidden>
+              <input type="text" name="name" value="{{ s.name }}" maxlength="120" required class="student-rename-input">
+              <button type="submit" class="btn secondary" style="padding:5px 9px;">Guardar</button>
+              <button type="button" class="btn secondary student-rename-cancel-btn" data-student-id="{{ s.id }}" style="padding:5px 9px;">Cancelar</button>
+            </form>
+            {% endif %}
+          </td>
           <td>
             {% if s.active %}<span class="pill ok">Activo</span>{% else %}<span class="pill pending">Inactivo</span>{% endif %}
           </td>
           <td style="text-align:right;">
             {% if can_edit %}
+            <button type="button" class="icon-btn rename-student-btn" data-student-id="{{ s.id }}" title="Cambiar nombre">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+            </button>
             <form method="post" action="/students/{{ s.id }}/toggle" style="display:inline;">
               <button class="btn secondary" type="submit">{{ 'Desactivar' if s.active else 'Activar' }}</button>
             </form>
@@ -53,5 +65,32 @@
     </table>
   </div>
 </div>
+
+{% if can_edit %}
+<script>
+(function () {
+  // Lápiz -> muestra el form de renombrar en vez del nombre, igual que el
+  // renombrado de videos (grading.html) y de cursos (courses.html).
+  document.querySelectorAll('.rename-student-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var id = btn.dataset.studentId;
+      document.getElementById('student-name-' + id).hidden = true;
+      var form = document.getElementById('student-rename-form-' + id);
+      form.hidden = false;
+      var input = form.querySelector('.student-rename-input');
+      input.focus();
+      input.select();
+    });
+  });
+  document.querySelectorAll('.student-rename-cancel-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var id = btn.dataset.studentId;
+      document.getElementById('student-rename-form-' + id).hidden = true;
+      document.getElementById('student-name-' + id).hidden = false;
+    });
+  });
+})();
+</script>
+{% endif %}
 
 {% endblock %}
