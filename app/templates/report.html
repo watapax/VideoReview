@@ -208,6 +208,67 @@
     .aspect-desc-close:hover { color: var(--text); background: var(--panel-2); }
     .aspect-desc-title { font-size: 17.5px; font-weight: 800; color: var(--text); margin: 0 30px 14px 0; }
     .aspect-desc-body { font-size: 14.5px; line-height: 1.75; color: var(--text); opacity: .92; white-space: pre-wrap; }
+
+    /* --------------------------------------------------------- celulares --- */
+    /* El informe se manda a los estudiantes por link (ver report_share_url /
+       public_report en main.py) y la mayoría lo abre desde el celular, no
+       desde un computador -- todo lo de arriba estaba pensado para escritorio
+       (padding de 52px, grillas con columnas mínimas de 380px, el video y la
+       lista de anotaciones lado a lado). Acá se reduce el aire sobrante y se
+       apilan en una sola columna los bloques que en desktop van en fila, sin
+       tocar el resto de la app (grading.html / video_review.html), que sigue
+       pensada para el profesor en su computador. */
+    @media (max-width: 720px) {
+      .topbar { padding: 14px 16px; gap: 10px; flex-wrap: wrap; min-height: 0; }
+      .topbar-title { font-size: 16px; }
+      .eyebrow { font-size: 10px; }
+      .share-btn { padding: 9px 14px; font-size: 12.5px; }
+
+      .view-hero { padding: 20px 16px 14px; }
+      .view-hero h1 { font-size: 22px; }
+      .view-hero .hint { font-size: 13px; }
+
+      .grades-grid {
+        grid-template-columns: 1fr;
+        gap: 10px;
+        padding: 4px 16px 28px;
+      }
+      .grade-card { padding: 18px 20px; gap: 12px; }
+      .gc-name { font-size: 16.5px; }
+      .gc-grade { font-size: 34px; }
+
+      .detail-hero { padding: 18px 16px 14px; }
+      .back-link { margin-bottom: 14px; }
+      .detail-name { font-size: 24px; }
+      .detail-badge { font-size: 17px; padding: 6px 14px; }
+      .detail-video-btn { padding: 8px 14px 8px 12px; font-size: 12.5px; }
+
+      .aspects-grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
+        padding: 4px 16px 28px;
+      }
+      .aspect-card { padding: 16px 18px 18px; gap: 10px; }
+      .ac-feedback { font-size: 14.5px; }
+
+      /* Video: en desktop el reproductor y la lista de anotaciones van lado
+         a lado (.review-layout); en celular se apilan -- el reproductor
+         arriba con una altura mínima para que no quede aplastado, la lista
+         de anotaciones abajo con su propio scroll para no empujar el video
+         fuera de la pantalla. */
+      #view-video .review-topbar { padding: 12px 14px; gap: 8px; }
+      #view-video .review-topbar-sep { display: none; }
+      #view-video .review-main { padding: 14px; }
+      #view-video .review-layout { flex-direction: column; overflow-y: auto; }
+      #view-video .review-player { min-height: 220px; flex: 1 1 auto; }
+      #view-video .annotations-panel {
+        width: 100%; flex: 0 0 auto; max-height: 42vh; overflow-y: auto;
+        border-left: none; border-top: 1px solid var(--border);
+      }
+
+      .aspect-desc-modal { padding: 24px 20px 22px; max-height: 82vh; }
+      .aspect-desc-title { font-size: 16px; }
+    }
   </style>
 </head>
 <body>
@@ -219,9 +280,18 @@
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
         Volver a Corregir
       </a>
-      {% elif request.session.get('teacher_id') %}
-      {# Informe de un curso de otro docente: no hay "Corregir" al que volver
-         (ver require_own_assignment_view) — vuelve a la lista de cursos. #}
+      {% elif is_teacher_view %}
+      {# Informe de un curso de otro docente, visto por OTRO docente logueado
+         (no el dueño): no hay "Corregir" al que volver (ver
+         require_own_assignment_view) — vuelve a la lista de cursos.
+         is_teacher_view (no el estado de sesión) es lo que decide esto --
+         viene explícito desde main.py: True solo en la ruta logueada
+         (report()), nunca en la pública (public_report(), la que abren los
+         estudiantes con el link de compartir). Antes se chequeaba
+         request.session.get('teacher_id'), lo que hacía aparecer este botón
+         para un docente que abriera su PROPIO link público para revisarlo
+         antes de mandarlo -- un botón que no tiene sentido para un
+         estudiante. #}
       <a class="back-to-app-link" href="/courses">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
         Volver a Cursos

@@ -1261,6 +1261,7 @@ def report(assignment_id: int, request: Request):
                 "report_share_url": report_share_url,
                 "can_edit": can_edit,
                 "owner_name": owner_name,
+                "is_teacher_view": True,
             },
         )
 
@@ -1294,6 +1295,7 @@ def public_report(share_token: str, request: Request):
                 "scale_min_display": str(int(SCALE_MIN)),
                 "scale_max_display": str(int(SCALE_MAX)),
                 "report_share_url": None,
+                "is_teacher_view": False,
             },
         )
 
