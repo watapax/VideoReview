@@ -14,7 +14,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from starlette.responses import JSONResponse, RedirectResponse, Response
 
 from app import storage
-from app.auth import TEACHER_PASSWORD, hash_password, is_logged_in, require_login, verify_password
+from app.auth import TEACHER_PASSWORD, hash_password, is_admin_teacher, is_logged_in, require_login, verify_password
 from app.database import engine, init_db
 from app.models import (
     Annotation,
@@ -454,6 +454,7 @@ def courses_list(request: Request):
             "courses": courses,
             "my_rows": my_rows,
             "other_groups": other_groups,
+            "is_admin": is_admin_teacher(request),
         },
     )
 
@@ -592,13 +593,18 @@ def teachers_delete(teacher_id: int, request: Request):
     require_course_owner). Así se puede borrar una cuenta duplicada o de
     alguien que ya no participa sin perder ningún estudiante, nota o video.
 
-    Cualquier docente logueado puede eliminar la cuenta de OTRO (mismo
-    modelo de confianza que ver el informe de sus cursos, ver
-    can_edit_course) -- pero no la propia, para no dejar la sesión activa
-    apuntando a un teacher_id que ya no existe."""
+    Solo la cuenta administradora (ver ADMIN_TEACHER_NAME en auth.py) puede
+    hacerlo -- antes cualquier docente logueado podía eliminar a cualquier
+    otro, lo cual abría la puerta a que alguien borrara cuentas ajenas sin
+    ningún control. Tampoco se puede eliminar la propia cuenta, para no
+    dejar la sesión activa apuntando a un teacher_id que ya no existe."""
     redirect = require_login(request)
     if redirect:
         return redirect
+    if not is_admin_teacher(request):
+        return RedirectResponse(
+            url="/courses?msg=Solo la cuenta administradora puede eliminar docentes.", status_code=303
+        )
     if teacher_id == request.session.get("teacher_id"):
         return RedirectResponse(url="/courses?msg=No puedes eliminar tu propia cuenta.", status_code=303)
     with Session(engine) as session:

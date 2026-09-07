@@ -82,12 +82,21 @@ Con la CLI, desde la carpeta del proyecto:
 ```
 railway variable set TEACHER_PASSWORD=tu-codigo-de-invitacion
 railway variable set SECRET_KEY=algo-largo-y-aleatorio
+railway variable set ADMIN_TEACHER_NAME="tu nombre exacto de /signup"
 ```
 
 `TEACHER_PASSWORD` ahora es el código de invitación para crear cuentas de
 docente nuevas (cada uno se registra con su propio nombre y contraseña
 desde `/signup`) — no la contraseña de nadie para entrar día a día. Ver
 "Cuentas de docente" en el README.
+
+`ADMIN_TEACHER_NAME` es el nombre EXACTO (tal como lo escribiste en
+`/signup`, no distingue mayúsculas/minúsculas) de tu propia cuenta de
+docente. Solo esa cuenta puede eliminar la cuenta de otros docentes (botón
+de basurero en "Cursos" → "Cursos de otros docentes") — sin esta variable,
+nadie puede hacerlo, ni siquiera tú. Si todavía no te has registrado en la
+app, primero créate la cuenta y después configura esta variable con ese
+mismo nombre (o cámbiala más adelante si algún día usas otro nombre).
 
 Para generar un `SECRET_KEY` seguro (no reutilices el de tu `.env` local, usa
 uno distinto para producción), corre esto y copia el resultado:

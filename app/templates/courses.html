@@ -85,8 +85,10 @@
   {% if other_groups %}
   <p class="hint" style="margin:0 0 18px;">
     Solo puedes revisar sus informes por tarea (notas y anotaciones de video) — no puedes editarlos.
-    Sí puedes eliminar la cuenta de un docente: sus cursos quedan sin dueño (no se borra ningún dato)
-    y el próximo que los edite los reclama.
+    {% if is_admin %}
+    Como cuenta administradora, también puedes eliminar la cuenta de un docente: sus cursos quedan
+    sin dueño (no se borra ningún dato) y el próximo que los edite los reclama.
+    {% endif %}
   </p>
   {% for group in other_groups %}
   <div class="teacher-group">
@@ -94,11 +96,13 @@
       <div class="teacher-avatar">{{ group.teacher_initials }}</div>
       <div class="teacher-group-name">{{ group.teacher_name }}</div>
       <span class="course-meta">{{ group.rows|length }} curso{{ 's' if group.rows|length != 1 else '' }}</span>
+      {% if is_admin %}
       <form method="post" action="/teachers/{{ group.teacher_id }}/delete" class="teacher-delete-form">
         <button type="submit" class="icon-btn danger teacher-delete-btn" data-teacher-name="{{ group.teacher_name }}" title="Eliminar docente">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
         </button>
       </form>
+      {% endif %}
     </div>
     <div class="courses-list">
       {% for row in group.rows %}

@@ -63,6 +63,12 @@ tarea — con las notas finales y las anotaciones de video de cada
 estudiante, igual que el informe de tus propios cursos — pero sin el botón
 de compartir ni forma de editar nada.
 
+Eliminar la cuenta de un docente (sus cursos quedan sin dueño, no se borra
+ningún dato) es una acción restringida a una sola cuenta administradora,
+configurada con `ADMIN_TEACHER_NAME` en `.env` (debe ser exactamente el
+nombre con el que esa cuenta se registró). Sin esa variable, nadie ve el
+botón de eliminar docente — ni siquiera tú.
+
 Cada vez que alguien crea su cuenta, la app le arma automáticamente un
 curso propio en blanco ("Mi curso"), sin estudiantes ni tareas, listo para
 que le cambie el nombre y agregue sus alumnos — nadie hereda cursos ni

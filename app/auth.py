@@ -13,6 +13,17 @@ from starlette.responses import RedirectResponse
 # cursos de los demás (ver TEACHER_PASSWORD en README/DEPLOY_RAILWAY.md).
 TEACHER_PASSWORD = os.environ.get("TEACHER_PASSWORD", "changeme")
 
+# Nombre de la cuenta "administradora" -- la del profesor dueño de la
+# instalación. Solo esa cuenta puede eliminar la cuenta de OTROS docentes
+# (ver /teachers/{id}/delete en main.py): antes cualquier docente logueado
+# podía hacerlo, lo cual no tiene sentido cuando varias personas comparten
+# la misma instalación. Se compara sin distinguir mayúsculas/minúsculas,
+# igual que el login (ver name_lower en Teacher) -- debe ser exactamente el
+# nombre con el que esa cuenta se registró en /signup. Si no está
+# configurada, nadie es admin (la función queda deshabilitada por defecto,
+# nunca abierta a cualquiera).
+ADMIN_TEACHER_NAME = os.environ.get("ADMIN_TEACHER_NAME", "")
+
 _PBKDF2_ITERATIONS = 260_000
 
 
@@ -44,6 +55,17 @@ def is_logged_in(request: Request) -> bool:
 
 def current_teacher_id(request: Request):
     return request.session.get("teacher_id")
+
+
+def is_admin_teacher(request: Request) -> bool:
+    """True solo para la cuenta cuyo nombre coincide con ADMIN_TEACHER_NAME
+    (ver arriba). Se guarda "teacher_name" en la sesión al iniciar sesión o
+    registrarse (ver /login, /signup en main.py), así que no hace falta
+    tocar la base de datos para chequear esto en cada request."""
+    if not ADMIN_TEACHER_NAME:
+        return False
+    name = request.session.get("teacher_name")
+    return bool(name) and name.strip().lower() == ADMIN_TEACHER_NAME.strip().lower()
 
 
 def require_login(request: Request):
