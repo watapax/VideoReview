@@ -191,29 +191,7 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 .pill.ok { background: var(--ok-bg); color: var(--ok); border-color: transparent; }
 .pill.pending { background: transparent; color: var(--muted-2); }
 
-.course-row {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 14px 20px;
-  border-bottom: 1px solid var(--border);
-  flex-wrap: wrap;
-}
-.course-row:last-child { border-bottom: none; }
-.course-name-input {
-  flex: 1 1 220px;
-  min-width: 160px;
-  max-width: 320px;
-  background: transparent;
-  border: 1px solid transparent;
-  font-weight: 700;
-  font-size: 13.5px;
-  padding: 6px 8px;
-}
-.course-name-input:hover { border-color: var(--border-strong); }
-.course-name-input:focus { background: var(--input-bg); border-color: var(--accent); }
 .course-meta { font-size: 12px; color: var(--muted-2); white-space: nowrap; }
-.course-row-actions { display: flex; gap: 8px; margin-left: auto; }
 
 /* ---------- /courses: pestañas "Mis cursos" / "Cursos de otros docentes" ----------
    Nombres de clase propios (courses-tab-*), NO .tabs/.tab-btn/.tab-panel a
@@ -244,29 +222,52 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 .courses-tab-panel.active { display: block; animation: tab-fade-in .3s cubic-bezier(.22,.61,.36,1); }
 @keyframes tab-fade-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
-/* "Mis cursos": cada curso como una tarjeta editable, en grilla — antes era
-   una lista de filas angostas que desperdiciaba el ancho disponible. */
-.my-courses-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px;
-}
-.my-course-card {
+/* "Mis cursos" / "Cursos de otros docentes": mismo esquema de lista
+   compacta que la pestaña Videos (grading.html: .videos-list/.video-row) —
+   antes cada una tenía su propia grilla de tarjetas, con estilos casi
+   duplicados entre sí. Una fila por curso: ícono, nombre + metadatos,
+   acciones a la derecha (lápiz/activar/eliminar en "mis cursos"; solo
+   lectura + chips de tarea en "otros docentes"). */
+.courses-list { display: flex; flex-direction: column; gap: 8px; }
+.course-item {
+  display: flex; align-items: center; gap: 14px;
   background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg);
-  padding: 16px 18px; display: flex; flex-direction: column; gap: 10px;
-  transition: border-color .15s ease;
+  padding: 12px 16px; transition: border-color .15s ease;
 }
-.my-course-card:focus-within { border-color: var(--accent); }
-.my-course-top { display: flex; }
-.my-course-top .course-name-input { flex: 1; max-width: none; }
-.my-course-pills { display: flex; gap: 6px; }
-.my-course-card .course-row-actions { margin-left: 0; margin-top: 2px; }
-/* Botón de eliminar curso: solo ícono (sin texto) y empujado al extremo del
-   grupo -- es destructivo y poco usado, no debería competir en peso visual
-   con "Guardar nombre"/"Activar-Desactivar". */
-.course-row-actions .course-delete-btn { padding: 9px 11px; margin-left: auto; flex-shrink: 0; }
+.course-item:hover { border-color: var(--border-strong); }
+.course-item.readonly { align-items: flex-start; }
+.course-item-icon {
+  width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0;
+  background: var(--input-bg); color: var(--muted);
+  display: flex; align-items: center; justify-content: center;
+}
+.course-item-body { flex: 1; min-width: 0; }
+.course-item-title-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.course-item-title { font-size: 13.5px; font-weight: 700; color: var(--text); }
+.course-item-meta { font-size: 11.5px; color: var(--muted-2); margin-top: 2px; }
+.course-item-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.course-item-actions .icon-btn.danger:hover { color: var(--danger); background: var(--danger-bg); }
 
-/* "Cursos de otros docentes": agrupados por docente (avatar + nombre), sus
-   cursos como tarjetas de solo lectura en grilla — pensado para crecer
-   (más docentes, más cursos) sin volverse una pared de texto plano. */
+.course-rename-form { display: flex; align-items: center; gap: 6px; }
+.course-rename-input {
+  flex: 1; min-width: 0; max-width: 320px; font-size: 12.5px; padding: 5px 8px;
+  border-radius: 8px; border: 1px solid var(--border-strong);
+  background: var(--input-bg); color: var(--text);
+}
+
+.course-item-tasks { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.task-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11.5px; font-weight: 600; color: var(--muted);
+  padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border-strong);
+  text-decoration: none; transition: border-color .15s ease, color .15s ease, background .15s ease;
+}
+.task-chip:hover { border-color: var(--accent); color: var(--text); background: var(--accent-soft); }
+.task-chip svg { flex-shrink: 0; opacity: .7; }
+
+/* "Cursos de otros docentes": agrupados por docente (avatar + nombre) con
+   un botón para eliminar la cuenta de ese docente (ver /teachers/{id}/delete
+   en main.py -- no borra sus cursos, solo el dueño). */
 .teacher-group { margin-bottom: 26px; }
 .teacher-group:last-child { margin-bottom: 0; }
 .teacher-group-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
@@ -278,27 +279,8 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 }
 .teacher-group-name { font-size: 14px; font-weight: 700; color: var(--text); }
 .teacher-group-header .course-meta { margin-left: auto; }
-
-.other-courses-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 12px;
-}
-.other-course-card {
-  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg);
-  padding: 16px 18px; display: flex; flex-direction: column; gap: 8px;
-  transition: border-color .15s ease, transform .15s ease;
-}
-.other-course-card:hover { border-color: var(--border-strong); transform: translateY(-1px); }
-.other-course-top { display: flex; align-items: center; gap: 10px; }
-.other-course-name { font-weight: 700; font-size: 13.5px; flex: 1; min-width: 0; }
-.other-course-tasks { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
-.task-chip {
-  display: inline-flex; align-items: center; gap: 5px;
-  font-size: 11.5px; font-weight: 600; color: var(--muted);
-  padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border-strong);
-  text-decoration: none; transition: border-color .15s ease, color .15s ease, background .15s ease;
-}
-.task-chip:hover { border-color: var(--accent); color: var(--text); background: var(--accent-soft); }
-.task-chip svg { flex-shrink: 0; opacity: .7; }
+.teacher-group-header .teacher-delete-btn { flex-shrink: 0; }
+.teacher-group-header .icon-btn.danger:hover { color: var(--danger); background: var(--danger-bg); }
 
 .login-wrap {
   min-height: 100vh;

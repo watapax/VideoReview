@@ -412,7 +412,13 @@ def courses_list(request: Request):
         all_courses = session.exec(select(Course).order_by(Course.name)).all()
 
         my_rows = []
-        other_by_teacher: dict[str, list[dict]] = {}
+        # Agrupado por teacher_id (no por nombre): un curso solo cae en este
+        # "otros" si can_edit_course dio False, y eso solo pasa cuando
+        # owner_teacher_id apunta a OTRO docente real (los huérfanos, con
+        # owner_teacher_id None, siempre se pueden editar -- ver
+        # can_edit_course) -- así que acá el id nunca es None y sirve para el
+        # botón de "eliminar docente" (ver /teachers/{id}/delete).
+        other_by_teacher: dict[int, dict] = {}
         for c in all_courses:
             n_students = len(
                 session.exec(
@@ -428,16 +434,16 @@ def courses_list(request: Request):
                 ).all()
                 owner = session.get(Teacher, c.owner_teacher_id) if c.owner_teacher_id else None
                 owner_name = owner.name if owner else "Otro docente"
-                other_by_teacher.setdefault(owner_name, []).append(
-                    {"course": c, "n_students": n_students, "assignments": assignments}
+                group = other_by_teacher.setdefault(
+                    c.owner_teacher_id, {"teacher_id": c.owner_teacher_id, "teacher_name": owner_name, "rows": []}
                 )
+                group["rows"].append({"course": c, "n_students": n_students, "assignments": assignments})
 
         other_groups = []
-        for owner_name, teacher_rows in sorted(other_by_teacher.items(), key=lambda kv: kv[0].lower()):
-            teacher_rows.sort(key=lambda r: r["course"].name.lower())
-            other_groups.append(
-                {"teacher_name": owner_name, "teacher_initials": initials(owner_name), "rows": teacher_rows}
-            )
+        for _teacher_id, group in sorted(other_by_teacher.items(), key=lambda kv: kv[1]["teacher_name"].lower()):
+            group["rows"].sort(key=lambda r: r["course"].name.lower())
+            group["teacher_initials"] = initials(group["teacher_name"])
+            other_groups.append(group)
 
     return templates.TemplateResponse(
         "courses.html",
@@ -573,6 +579,41 @@ def courses_delete(course_id: int, request: Request):
             storage.delete_object(key)
 
     return RedirectResponse(url=f"/courses?msg=Curso «{course_name}» eliminado.", status_code=303)
+
+
+# --------------------------------------------------------------- teachers --
+
+@app.post("/teachers/{teacher_id}/delete")
+def teachers_delete(teacher_id: int, request: Request):
+    """Elimina la CUENTA de un docente (no sus cursos ni sus datos): los
+    cursos que le pertenecían quedan sin dueño (owner_teacher_id = None),
+    exactamente como los de una instalación anterior a que existieran las
+    cuentas -- el próximo docente que los edite los reclama (ver
+    require_course_owner). Así se puede borrar una cuenta duplicada o de
+    alguien que ya no participa sin perder ningún estudiante, nota o video.
+
+    Cualquier docente logueado puede eliminar la cuenta de OTRO (mismo
+    modelo de confianza que ver el informe de sus cursos, ver
+    can_edit_course) -- pero no la propia, para no dejar la sesión activa
+    apuntando a un teacher_id que ya no existe."""
+    redirect = require_login(request)
+    if redirect:
+        return redirect
+    if teacher_id == request.session.get("teacher_id"):
+        return RedirectResponse(url="/courses?msg=No puedes eliminar tu propia cuenta.", status_code=303)
+    with Session(engine) as session:
+        teacher = session.get(Teacher, teacher_id)
+        if not teacher:
+            return RedirectResponse(url="/courses", status_code=303)
+        teacher_name = teacher.name
+        for c in session.exec(select(Course).where(Course.owner_teacher_id == teacher_id)).all():
+            c.owner_teacher_id = None
+            session.add(c)
+        session.delete(teacher)
+        session.commit()
+    return RedirectResponse(
+        url=f"/courses?msg=Docente «{teacher_name}» eliminado. Sus cursos quedaron sin dueño.", status_code=303
+    )
 
 
 @app.get("/courses/switch")

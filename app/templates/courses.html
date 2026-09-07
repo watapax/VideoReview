@@ -35,25 +35,43 @@
 
     <div style="flex:1; min-width:0;">
       {% if my_rows %}
-      <div class="my-courses-grid">
+      <div class="courses-list">
         {% for row in my_rows %}
-        <form method="post" action="/courses/{{ row.course.id }}/rename" class="my-course-card">
-          <div class="my-course-top">
-            <input type="text" name="name" value="{{ row.course.name }}" class="course-name-input">
+        <div class="course-item">
+          <div class="course-item-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10L12 5 2 10l10 5 10-5Z"/><path d="M6 12v5c0 1.5 3 3 6 3s6-1.5 6-3v-5"/></svg>
           </div>
-          <div class="my-course-pills">
-            {% if row.course.id == course.id %}<span class="pill ok">actual</span>{% endif %}
-            {% if row.course.active %}<span class="pill ok">Activo</span>{% else %}<span class="pill pending">Inactivo</span>{% endif %}
+          <div class="course-item-body">
+            <div class="course-item-title-row">
+              <span class="course-item-title" id="course-title-{{ row.course.id }}">{{ row.course.name }}</span>
+              {% if row.course.id == course.id %}<span class="pill ok">actual</span>{% endif %}
+              {% if not row.course.active %}<span class="pill pending">Inactivo</span>{% endif %}
+            </div>
+            <form method="post" action="/courses/{{ row.course.id }}/rename" class="course-rename-form" id="course-rename-form-{{ row.course.id }}" hidden>
+              <input type="text" name="name" value="{{ row.course.name }}" maxlength="80" required class="course-rename-input">
+              <button type="submit" class="btn secondary" style="padding:5px 9px;">Guardar</button>
+              <button type="button" class="btn secondary course-rename-cancel-btn" data-course-id="{{ row.course.id }}" style="padding:5px 9px;">Cancelar</button>
+            </form>
+            <div class="course-item-meta">
+              {{ row.n_students }} estudiante{{ 's' if row.n_students != 1 else '' }} · {{ row.n_assignments }} tarea{{ 's' if row.n_assignments != 1 else '' }}
+            </div>
           </div>
-          <span class="course-meta">{{ row.n_students }} estudiantes · {{ row.n_assignments }} tareas</span>
-          <div class="course-row-actions">
-            <button type="submit" class="btn secondary">Guardar nombre</button>
-            <button type="submit" formaction="/courses/{{ row.course.id }}/toggle" class="btn secondary">{{ 'Desactivar' if row.course.active else 'Activar' }}</button>
-            <button type="submit" formaction="/courses/{{ row.course.id }}/delete" class="btn secondary danger course-delete-btn" data-course-name="{{ row.course.name }}" title="Eliminar curso">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+          <div class="course-item-actions">
+            <button type="button" class="icon-btn rename-course-btn" data-course-id="{{ row.course.id }}" title="Cambiar nombre">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
             </button>
+            <form method="post" action="/courses/{{ row.course.id }}/toggle">
+              <button type="submit" class="icon-btn" title="{{ 'Desactivar' if row.course.active else 'Activar' }}">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.77.04"/></svg>
+              </button>
+            </form>
+            <form method="post" action="/courses/{{ row.course.id }}/delete" class="course-delete-form">
+              <button type="submit" class="icon-btn danger course-delete-btn" data-course-name="{{ row.course.name }}" title="Eliminar curso">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+              </button>
+            </form>
           </div>
-        </form>
+        </div>
         {% endfor %}
       </div>
       {% else %}
@@ -67,6 +85,8 @@
   {% if other_groups %}
   <p class="hint" style="margin:0 0 18px;">
     Solo puedes revisar sus informes por tarea (notas y anotaciones de video) — no puedes editarlos.
+    Sí puedes eliminar la cuenta de un docente: sus cursos quedan sin dueño (no se borra ningún dato)
+    y el próximo que los edite los reclama.
   </p>
   {% for group in other_groups %}
   <div class="teacher-group">
@@ -74,29 +94,37 @@
       <div class="teacher-avatar">{{ group.teacher_initials }}</div>
       <div class="teacher-group-name">{{ group.teacher_name }}</div>
       <span class="course-meta">{{ group.rows|length }} curso{{ 's' if group.rows|length != 1 else '' }}</span>
+      <form method="post" action="/teachers/{{ group.teacher_id }}/delete" class="teacher-delete-form">
+        <button type="submit" class="icon-btn danger teacher-delete-btn" data-teacher-name="{{ group.teacher_name }}" title="Eliminar docente">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+        </button>
+      </form>
     </div>
-    <div class="other-courses-grid">
+    <div class="courses-list">
       {% for row in group.rows %}
-      <div class="other-course-card">
-        <div class="other-course-top">
-          <span class="other-course-name">{{ row.course.name }}</span>
-          {% if not row.course.active %}<span class="pill pending">Inactivo</span>{% endif %}
+      <div class="course-item readonly">
+        <div class="course-item-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10L12 5 2 10l10 5 10-5Z"/><path d="M6 12v5c0 1.5 3 3 6 3s6-1.5 6-3v-5"/></svg>
         </div>
-        <span class="course-meta">
-          {{ row.n_students }} estudiantes · {{ row.assignments|length }} tarea{{ 's' if row.assignments|length != 1 else '' }}
-        </span>
-        {% if row.assignments %}
-        <div class="other-course-tasks">
-          {% for a in row.assignments %}
-          <a class="task-chip" href="/assignments/{{ a.id }}/report">
-            {{ a.name }}
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-          </a>
-          {% endfor %}
+        <div class="course-item-body">
+          <div class="course-item-title-row">
+            <span class="course-item-title">{{ row.course.name }}</span>
+            {% if not row.course.active %}<span class="pill pending">Inactivo</span>{% endif %}
+          </div>
+          <div class="course-item-meta">
+            {{ row.n_students }} estudiante{{ 's' if row.n_students != 1 else '' }} · {{ row.assignments|length }} tarea{{ 's' if row.assignments|length != 1 else '' }}
+          </div>
+          {% if row.assignments %}
+          <div class="course-item-tasks">
+            {% for a in row.assignments %}
+            <a class="task-chip" href="/assignments/{{ a.id }}/report">
+              {{ a.name }}
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+            </a>
+            {% endfor %}
+          </div>
+          {% endif %}
         </div>
-        {% else %}
-        <p class="hint" style="margin:2px 0 0;">Todavía no tiene tareas.</p>
-        {% endif %}
       </div>
       {% endfor %}
     </div>
@@ -123,19 +151,53 @@
     });
   });
 
-  // Confirma antes de eliminar un curso -- es el único botón destructivo de
-  // esta tarjeta (Guardar nombre / Activar-Desactivar no lo son), así que se
-  // detecta con event.submitter en vez de un onsubmit fijo del form entero.
-  // Se arma el texto en JS (no interpolado en el HTML) para no pelear con
-  // comillas si el nombre del curso las tiene.
-  document.querySelectorAll('.my-course-card').forEach(function (form) {
+  // Lápiz -> muestra el form de renombrar en vez del nombre (mismo patrón
+  // que el renombrado de videos en grading.html).
+  document.querySelectorAll('.rename-course-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var id = btn.dataset.courseId;
+      document.getElementById('course-title-' + id).closest('.course-item-title-row').hidden = true;
+      var form = document.getElementById('course-rename-form-' + id);
+      form.hidden = false;
+      var input = form.querySelector('.course-rename-input');
+      input.focus();
+      input.select();
+    });
+  });
+  document.querySelectorAll('.course-rename-cancel-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var id = btn.dataset.courseId;
+      document.getElementById('course-rename-form-' + id).hidden = true;
+      document.getElementById('course-title-' + id).closest('.course-item-title-row').hidden = false;
+    });
+  });
+
+  // Confirma antes de eliminar un curso -- se arma el texto en JS (no
+  // interpolado en el HTML) para no pelear con comillas si el nombre del
+  // curso las tiene.
+  document.querySelectorAll('.course-delete-form').forEach(function (form) {
     form.addEventListener('submit', function (e) {
-      var submitter = e.submitter;
-      if (!submitter || !submitter.classList.contains('course-delete-btn')) return;
-      var name = submitter.dataset.courseName || 'este curso';
+      var name = form.querySelector('.course-delete-btn').dataset.courseName || 'este curso';
       var ok = confirm(
         'Eliminar el curso "' + name + '" -- se van a borrar sus estudiantes, tareas, rúbrica, ' +
         'notas y videos. Esta acción no se puede deshacer. ¿Continuar?'
+      );
+      if (!ok) e.preventDefault();
+    });
+  });
+
+  // Confirma antes de eliminar la CUENTA de un docente -- a diferencia de
+  // eliminar un curso, esto no borra ningún dato: sus cursos quedan sin
+  // dueño (ver /teachers/{id}/delete en main.py) para que el próximo que
+  // los edite los reclame, igual que un curso de una instalación anterior a
+  // que existieran las cuentas.
+  document.querySelectorAll('.teacher-delete-form').forEach(function (form) {
+    form.addEventListener('submit', function (e) {
+      var name = form.querySelector('.teacher-delete-btn').dataset.teacherName || 'este docente';
+      var ok = confirm(
+        'Eliminar la cuenta de "' + name + '" -- sus cursos quedarán sin dueño (no se borra ningún ' +
+        'estudiante, tarea, nota ni video) y el próximo docente que los edite los reclama para sí. ' +
+        '¿Continuar?'
       );
       if (!ok) e.preventDefault();
     });
